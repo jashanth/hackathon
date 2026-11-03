@@ -1,0 +1,51 @@
+.registration { max-width: 900px; padding-top: calc(var(--header-height) + 40px); padding-bottom: 64px; }
+.registration-intro { margin-bottom: 28px; }
+.registration-eyebrow { color: var(--violet); font: 500 10px/1.6 var(--font-mono); letter-spacing: .06em; }
+.registration h1 { margin: 8px 0; font: 600 clamp(30px, 5vw, 44px)/1.15 var(--font-heading); letter-spacing: -.05em; }
+.registration-intro > p:last-child, .registration-note, .registration-privacy { color: var(--text-secondary); font-size: 13px; }
+.registration-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); list-style: none; padding: 0; margin: 0; border-block: 1px solid var(--border-subtle); }
+.registration-steps li { display: flex; align-items: center; gap: 9px; padding: 16px 8px; color: var(--text-secondary); font-size: 12px; border-bottom: 2px solid transparent; }
+.registration-steps li[aria-current] { color: var(--violet); border-bottom-color: var(--violet); font-weight: 700; }
+.registration-steps li > span { font-family: var(--font-mono); }
+.registration-save { padding: 14px 0; font-size: 12px; color: var(--text-secondary); }
+.registration-save p { margin: 4px 0; }
+.registration-save button { margin-top: 10px; }
+.registration-panel { padding: clamp(18px, 4vw, 32px); background: var(--surface-card); border: 1px solid var(--border-subtle); border-radius: 4px; }
+.registration h2 { margin: 0 0 8px; font: 600 24px/1.3 var(--font-heading); letter-spacing: -.03em; }
+.registration-fields { padding: 0; margin: 0; border: 0; min-width: 0; }
+.registration-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.registration .form-group { min-width: 0; align-content: start; }
+.registration .form-group label { font-size: 12px; }
+.registration .form-input { font-size: 16px; }
+.registration small { font-size: 11px; color: var(--text-secondary); line-height: 1.6; }
+.registration :is(input, button, a, h2):focus-visible { outline: 2px solid var(--violet); outline-offset: 4px; }
+.registration [aria-invalid='true'] { border-color: var(--coral); }
+.registration-error { display: block; color: var(--coral); font-size: 12px; }
+.registration-members { margin-top: 22px; }
+.registration-leader { display: grid; padding: 14px 16px; border-left: 2px solid var(--violet); background: var(--bg-secondary); overflow-wrap: anywhere; }
+.registration-leader span { color: var(--text-secondary); font-size: 12px; }
+.registration-member { min-width: 0; padding: 14px 16px; margin: 22px 0; border: 1px solid var(--border-subtle); }
+.registration-member legend { padding: 0 6px; font: 600 14px var(--font-heading); }
+.registration-member .form-grid { margin-top: 4px; }
+.registration-text-button { background: transparent; color: var(--violet); padding: 10px 0; min-height: 44px; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.registration-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 12px; margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--border-subtle); }
+.registration button:disabled { opacity: .55; cursor: not-allowed; }
+.registration-review-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 20px; }
+.registration-review h3, .registration-review h4 { margin: 0; font: 600 16px var(--font-heading); }
+.registration-review dl { margin: 8px 0 20px; }
+.registration-review dl > div { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(0, 2fr); gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--border-subtle); font-size: 13px; }
+.registration-review dt { color: var(--text-secondary); text-transform: capitalize; }
+.registration-review dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.registration-review-member { margin-top: 20px; }
+.registration-notice { padding: 16px; background: var(--bg-secondary); border-left: 2px solid var(--violet); font-size: 13px; }
+.registration-receipt { font-family: var(--font-mono); overflow-wrap: anywhere; }
+.registration-privacy { margin-top: 20px; font-size: 11px; }
+.registration-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (max-width: 560px) {
+  .registration { padding-top: calc(var(--header-height) + 24px); padding-bottom: 40px; }
+  .registration-grid { grid-template-columns: 1fr; }
+  .registration-steps li { font-size: 11px; gap: 6px; padding-inline: 4px; }
+  .registration-review dl > div { grid-template-columns: 1fr; gap: 2px; }
+  .registration-actions > button { flex: 1; padding-inline: 12px; }
+  .registration-review-heading { align-items: baseline; }
+}

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+    <meta name="theme-color" content="#fbfaf8" />
+    <meta name="description" content="KGRCET's HACKATHON 2027 — A 36-Hour National Level Hackathon organized by KG Reddy College of Engineering & Technology and Cybersecurity & Ethical Hacking Club." />
+    <title>KGRCET's HACKATHON 2027 | A 36-Hour National Level Hackathon</title>
+    
+    <!-- Display, body, and metadata fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+      (() => {
+        const saved = localStorage.getItem('kgrcet-theme');
+        document.documentElement.dataset.theme = saved || 'light';
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
