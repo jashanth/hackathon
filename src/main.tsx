@@ -1,6 +1,7 @@
-import { StrictMode, useEffect, useState } from 'react'
+import { StrictMode, useCallback, useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, MotionConfig, motion, useMotionValueEvent, useScroll } from 'framer-motion'
 import {
   ArrowRight,
   ArrowUpRight,
@@ -14,6 +15,7 @@ import {
   Gift,
   Globe,
   Lock,
+  MapPin,
   Menu,
   Moon,
   Package,
@@ -40,6 +42,8 @@ import {
 } from './config/event'
 import './styles.css'
 import Registration from './Registration'
+import Cosmos from './world/Cosmos'
+import { Decode, Ignition, Reticle, Reveal, useSurfaceEffects } from './world/fx'
 import collegeLogo from '../assets/kgrcet-logo.png'
 
 interface CountdownState {
@@ -68,23 +72,7 @@ function calculateTimeLeft(startDateStr: string, endDateStr: string): CountdownS
   }
 }
 
-function App() {
-  const isRegistration = window.location.pathname.replace(/\/+$/, '') === '/register'
-  const [menuOpen, setMenuOpen] = useState(false)
-
-  // Default theme is light on every device; preserve user manual choice
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    if (typeof window !== 'undefined') {
-      let saved: string | null = null
-      try { saved = localStorage.getItem('kgrcet-theme') } catch { /* Theme preference is optional. */ }
-      if (saved === 'light' || saved === 'dark') return saved
-      const docTheme = document.documentElement.dataset.theme as 'light' | 'dark' | undefined
-      if (docTheme === 'light' || docTheme === 'dark') return docTheme
-    }
-    return 'light'
-  })
-
-  // Live Countdown State
+function useCountdown() {
   const [timeLeft, setTimeLeft] = useState<CountdownState>(() => calculateTimeLeft(event.startDate, event.endDate))
 
   useEffect(() => {
@@ -94,6 +82,242 @@ function App() {
     return () => clearInterval(timer)
   }, [])
 
+  return timeLeft
+}
+
+const pad = (value: number) => String(value).padStart(2, '0')
+
+const DIAL_RADIUS = 43
+const DIAL_LENGTH = 2 * Math.PI * DIAL_RADIUS
+
+function Dial({ value, max, label }: { value: number; max: number; label: string }) {
+  return (
+    <div className="countdown-unit">
+      <svg className="dial" viewBox="0 0 100 100" aria-hidden="true">
+        <circle className="dial-ticks" cx="50" cy="50" r="48" pathLength="120" />
+        <circle className="dial-track" cx="50" cy="50" r={DIAL_RADIUS} />
+        <circle
+          className="dial-arc"
+          cx="50"
+          cy="50"
+          r={DIAL_RADIUS}
+          strokeDasharray={DIAL_LENGTH}
+          strokeDashoffset={DIAL_LENGTH * (1 - Math.min(value / max, 1))}
+        />
+      </svg>
+      <span className="countdown-number">{pad(value)}</span>
+      <span className="countdown-text">{label}</span>
+    </div>
+  )
+}
+
+function Countdown() {
+  const timeLeft = useCountdown()
+
+  return (
+    <div className="countdown-box-wrapper">
+      <div className="countdown-header">
+        <span className="countdown-label">
+          <Clock size={13} />
+          EVENT COMMENCEMENT COUNTDOWN
+        </span>
+        <span className="countdown-date-badge">
+          <Calendar size={12} />
+          {event.dateDisplay}
+        </span>
+      </div>
+
+      {timeLeft.status === 'upcoming' ? <div className="countdown-digits-grid">
+        <Dial value={timeLeft.days} max={365} label="DAYS" />
+        <Dial value={timeLeft.hours} max={24} label="HOURS" />
+        <Dial value={timeLeft.minutes} max={60} label="MINUTES" />
+        <Dial value={timeLeft.seconds} max={60} label="SECONDS" />
+      </div> : <p className="countdown-status" role="status">
+        {timeLeft.status === 'in-progress' ? 'Event in progress' : 'Event completed'}
+      </p>}
+    </div>
+  )
+}
+
+function useActiveSection(enabled: boolean) {
+  const [active, setActive] = useState('')
+
+  useEffect(() => {
+    if (!enabled) return
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) setActive(`#${entry.target.id}`)
+      }
+    }, { rootMargin: '-45% 0px -50% 0px' })
+    for (const item of navigation) {
+      const section = document.querySelector(item.href)
+      if (section) observer.observe(section)
+    }
+    return () => observer.disconnect()
+  }, [enabled])
+
+  return active
+}
+
+/** Instrument readouts around the viewport edge. Every value shown here is live and real. */
+function Hud({ active }: { active: string }) {
+  const timeLeft = useCountdown()
+  const { scrollYProgress } = useScroll()
+  const fill = useRef<HTMLSpanElement>(null)
+  const percent = useRef<HTMLSpanElement>(null)
+  const current = navigation.find((item) => item.href === active)
+
+  useMotionValueEvent(scrollYProgress, 'change', (progress) => {
+    if (fill.current) fill.current.style.transform = `scaleY(${progress})`
+    if (percent.current) percent.current.textContent = String(Math.round(progress * 100)).padStart(3, '0')
+  })
+
+  return (
+    <div className="hud" aria-hidden="true">
+      <div className="hud-rail"><span ref={fill} /></div>
+      <div className="hud-readout hud-left" data-visible={Boolean(current)}>
+        <b>{current?.label}</b>
+      </div>
+      <div className="hud-readout hud-right" data-visible={Boolean(current)}>
+        {timeLeft.status === 'upcoming' && <span>T− {timeLeft.days}D {pad(timeLeft.hours)}:{pad(timeLeft.minutes)}:{pad(timeLeft.seconds)}</span>}
+        <span><span ref={percent}>000</span>%</span>
+      </div>
+    </div>
+  )
+}
+
+function SectionHeader({ icon, pill, title, children, tone = '', centered = false }: {
+  icon: ReactNode
+  pill: string
+  title: ReactNode
+  children: ReactNode
+  tone?: string
+  centered?: boolean
+}) {
+  return (
+    <Reveal className={`section-header ${centered ? 'is-centered' : ''}`}>
+      <div className={`section-pill ${tone}`}>
+        {icon}
+        <Decode text={pill} />
+      </div>
+      <h2 className="section-title">{title}</h2>
+      <p className="section-desc">{children}</p>
+    </Reveal>
+  )
+}
+
+function Timeline() {
+  const wrap = useRef<HTMLDivElement>(null)
+  const [lit, setLit] = useState(0)
+  const { scrollYProgress } = useScroll({ target: wrap, offset: ['start 85%', 'end 55%'] })
+
+  useMotionValueEvent(scrollYProgress, 'change', (progress) => {
+    wrap.current?.style.setProperty('--beam', String(progress))
+    setLit(Math.floor(progress * timelineMilestones.length + 0.25))
+  })
+
+  return (
+    <div className="timeline-section-wrap" ref={wrap}>
+      <div className="timeline-spine" aria-hidden="true"><span /></div>
+
+      {timelineMilestones.map((item, idx) => (
+        <Reveal key={item.id} className="milestone-row" delay={idx * 0.08}>
+          <div className="milestone-marker-col">
+            <div className={`milestone-dot ${item.accent} ${idx < lit ? 'is-lit' : ''}`} />
+          </div>
+          <div className={`milestone-card ${item.accent}`} data-glow>
+            <span className="milestone-date">{item.date}</span>
+            <h3 className="milestone-title">{item.title}</h3>
+            {item.description && (
+              <p className="milestone-desc">{item.description}</p>
+            )}
+            {item.details && (
+              <ul className="milestone-details-list">
+                {item.details.map((detail, dIdx) => (
+                  <li key={dIdx} className="milestone-detail-item">
+                    <span className="milestone-detail-dot" aria-hidden="true" />
+                    <span>{detail}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Reveal>
+      ))}
+    </div>
+  )
+}
+
+const getPerkIcon = (name: string) => {
+  switch (name) {
+    case 'coffee':
+      return <Coffee size={22} />
+    case 'wifi':
+      return <Wifi size={22} />
+    case 'package':
+      return <Package size={22} />
+    case 'users':
+      return <Users size={22} />
+    case 'award':
+      return <Award size={22} />
+    case 'gamepad':
+      return <Gamepad2 size={22} />
+    default:
+      return <Gift size={22} />
+  }
+}
+
+const getInfoIcon = (name: string) => {
+  switch (name) {
+    case 'clock':
+      return <Clock size={18} />
+    case 'calendar':
+      return <Calendar size={18} />
+    case 'map-pin':
+      return <MapPin size={18} />
+    case 'users':
+      return <Users size={18} />
+    case 'terminal':
+      return <Terminal size={18} />
+    default:
+      return <Award size={18} />
+  }
+}
+
+const marqueeText = <>
+  Organized by <strong>KG Reddy College of Engineering &amp; Technology</strong> in collaboration with the <strong>Cybersecurity &amp; Ethical Hacking Club</strong>. 36 hours of non-stop engineering to pioneer breakthroughs in Generative AI, Cyber Defense, and Autonomous Systems.
+</>
+
+const shouldPlayIgnition = (isRegistration: boolean) => {
+  if (isRegistration || window.location.hash || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false
+  try {
+    if (sessionStorage.getItem('kgrcet-ignition')) return false
+    sessionStorage.setItem('kgrcet-ignition', '1')
+  } catch { /* Without storage the intro simply plays again. */ }
+  return true
+}
+
+function App() {
+  const isRegistration = window.location.pathname.replace(/\/+$/, '') === '/register'
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(false)
+  const [showIgnition, setShowIgnition] = useState(() => shouldPlayIgnition(isRegistration))
+  const [entered, setEntered] = useState(!showIgnition)
+  const activeSection = useActiveSection(!isRegistration)
+
+  useSurfaceEffects()
+
+  // Default theme is dark on every device; preserve user manual choice
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window !== 'undefined') {
+      let saved: string | null = null
+      try { saved = localStorage.getItem('kgrcet-theme') } catch { /* Theme preference is optional. */ }
+      if (saved === 'light' || saved === 'dark') return saved
+      const docTheme = document.documentElement.dataset.theme as 'light' | 'dark' | undefined
+      if (docTheme === 'light' || docTheme === 'dark') return docTheme
+    }
+    return 'dark'
+  })
 
   // Apply theme to document
   useEffect(() => {
@@ -118,6 +342,21 @@ function App() {
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [menuOpen])
 
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 24)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useEffect(() => {
+    if (!entered || !showIgnition) return
+    const timer = setTimeout(() => setShowIgnition(false), 1000)
+    return () => clearTimeout(timer)
+  }, [entered, showIgnition])
+
+  const onEntered = useCallback(() => setEntered(true), [])
+
   const toggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark'
     try { localStorage.setItem('kgrcet-theme', nextTheme) } catch { /* Theme preference is optional. */ }
@@ -125,24 +364,35 @@ function App() {
     setTheme(nextTheme)
   }
 
+  const heroLine = (delay: number) => ({
+    initial: { opacity: 0, y: 34, filter: 'blur(14px)' },
+    animate: entered ? { opacity: 1, y: 0, filter: 'blur(0px)' } : undefined,
+    transition: { duration: 1.3, delay, ease: [0.16, 1, 0.3, 1] as const },
+  })
+
   return (
+    <MotionConfig reducedMotion="user">
     <div className="site-shell">
-      <div className="ambient-glow-top" aria-hidden="true" />
-      <div className="ambient-glow-side" aria-hidden="true" />
-      <div className="ambient-glow-bottom" aria-hidden="true" />
+      <Cosmos theme={theme} fixed={isRegistration} />
       <div className="grid-overlay" aria-hidden="true" />
+      <div className="grain-overlay" aria-hidden="true" />
+      <Reticle />
+      {showIgnition && <Ignition onDone={onEntered} />}
+      {!isRegistration && <Hud active={activeSection} />}
 
       {/* =================================================================
           HEADER & SUBSTANTIAL COLLEGE IDENTITY
           ================================================================= */}
-      <header className="site-header">
+      <header className="site-header" data-scrolled={scrolled}>
         <div className="container header-inner">
           <a href={isRegistration ? '/' : '#top'} className="brand-link" aria-label="KG Reddy College of Engineering and Technology - KGRCET Hackathon 2027">
-            <img
-              className="brand-college-logo"
-              src={collegeLogo}
-              alt="KG Reddy College of Engineering and Technology"
-            />
+            <span className="brand-plaque">
+              <img
+                className="brand-college-logo"
+                src={collegeLogo}
+                alt="KG Reddy College of Engineering and Technology"
+              />
+            </span>
             <div className="brand-titles">
               <span className="brand-name">
                 KGRCET <span className="brand-year">HACKATHON 2027</span>
@@ -153,7 +403,7 @@ function App() {
 
           {!isRegistration && <nav className="desktop-nav" aria-label="Primary Desktop Navigation">
             {navigation.map((item) => (
-              <a key={item.href} href={item.href}>
+              <a key={item.href} href={item.href} aria-current={activeSection === item.href ? 'true' : undefined}>
                 {item.label}
               </a>
             ))}
@@ -167,7 +417,7 @@ function App() {
               aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
               title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
             >
-              {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
 
             {!isRegistration && <>
@@ -183,7 +433,7 @@ function App() {
               aria-expanded={menuOpen}
               aria-controls="mobile-navigation"
             >
-              {menuOpen ? <X size={22} /> : <Menu size={22} />}
+              {menuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
             </>}
           </div>
@@ -196,30 +446,29 @@ function App() {
           <motion.div
             className="mobile-nav-drawer"
             id="mobile-navigation"
-            initial={{ opacity: 0, y: -15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
-            transition={{ duration: 0.2 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
           >
             <div className="mobile-nav-links">
-              {navigation.map((item) => (
-                <a
+              {navigation.map((item, idx) => (
+                <motion.a
                   key={item.href}
                   href={item.href}
                   className="mobile-nav-link"
                   onClick={() => setMenuOpen(false)}
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.05 + idx * 0.05, ease: [0.16, 1, 0.3, 1] }}
                 >
                   <span>{item.label}</span>
-                  <ArrowRight size={16} />
-                </a>
+                  <ArrowRight size={18} />
+                </motion.a>
               ))}
             </div>
             <div className="mobile-drawer-footer">
-              <a
-                href="/register"
-                className="btn-primary-luxury"
-                style={{ width: '100%', justifyContent: 'center' }}
-              >
+              <a href="/register" className="btn-primary-luxury is-wide">
                 <span>Start a Team Draft</span>
                 <Sparkles size={15} />
               </a>
@@ -236,65 +485,37 @@ function App() {
           <div className="container hero-content">
             {/* Main Grand Landing Titles */}
             <h1 className="hero-title-main">
-              <span>KGRCET'S</span>
-              <span className="hero-title-gradient">HACKATHON</span>
-              <span>2027</span>
+              <motion.span className="hero-title-line" {...heroLine(0.1)}>KGRCET'S</motion.span>
+              <motion.span className="hero-title-gradient" {...heroLine(0.22)}>HACKATHON</motion.span>
+              <motion.span className="hero-title-year" {...heroLine(0.34)}>2027</motion.span>
             </h1>
 
-            {/* Refined Hackathon Tagline with Balanced Stars */}
-            <div className="hero-subtitle-tagline">
-              <span className="hero-star" aria-hidden="true">✦</span>
-              <span>A 36-HOUR NATIONAL LEVEL HACKATHON</span>
-              <span className="hero-star" aria-hidden="true">✦</span>
-            </div>
+            <motion.div className="hero-lower" {...heroLine(0.5)}>
+              <div className="hero-lower-copy">
+                {/* Refined Hackathon Tagline with Balanced Stars */}
+                <div className="hero-subtitle-tagline">
+                  <span className="hero-star" aria-hidden="true">✦</span>
+                  <span>A 36-HOUR NATIONAL LEVEL HACKATHON</span>
+                  <span className="hero-star" aria-hidden="true">✦</span>
+                </div>
 
-            {/* Action Buttons */}
-            <div className="hero-cta-group">
-              <a href="/register" className="btn-primary-luxury">
-                <span>Start a Team Draft</span>
-                <ArrowRight size={16} />
-              </a>
+                {/* Action Buttons */}
+                <div className="hero-cta-group">
+                  <a href="/register" className="btn-primary-luxury">
+                    <span>Start a Team Draft</span>
+                    <ArrowRight size={16} />
+                  </a>
 
-              <a href="#tracks" className="btn-secondary-luxury">
-                <span>Explore 10 Challenge Tracks</span>
-                <ArrowUpRight size={16} />
-              </a>
-            </div>
-
-            {/* Precision Countdown Interface */}
-            <div className="countdown-box-wrapper">
-              <div className="countdown-header">
-                <span className="countdown-label">
-                  <Clock size={13} style={{ color: 'var(--violet)', flexShrink: 0 }} />
-                  EVENT COMMENCEMENT COUNTDOWN
-                </span>
-                <span className="countdown-date-badge">
-                  <Calendar size={11} style={{ display: 'inline', marginRight: 4 }} />
-                  {event.dateDisplay}
-                </span>
+                  <a href="#tracks" className="btn-secondary-luxury">
+                    <span>Explore 10 Challenge Tracks</span>
+                    <ArrowUpRight size={16} />
+                  </a>
+                </div>
               </div>
 
-              {timeLeft.status === 'upcoming' ? <div className="countdown-digits-grid">
-                <div className="countdown-unit">
-                  <span className="countdown-number">{String(timeLeft.days).padStart(2, '0')}</span>
-                  <span className="countdown-text">DAYS</span>
-                </div>
-                <div className="countdown-unit">
-                  <span className="countdown-number">{String(timeLeft.hours).padStart(2, '0')}</span>
-                  <span className="countdown-text">HOURS</span>
-                </div>
-                <div className="countdown-unit">
-                  <span className="countdown-number">{String(timeLeft.minutes).padStart(2, '0')}</span>
-                  <span className="countdown-text">MINUTES</span>
-                </div>
-                <div className="countdown-unit">
-                  <span className="countdown-number">{String(timeLeft.seconds).padStart(2, '0')}</span>
-                  <span className="countdown-text">SECONDS</span>
-                </div>
-              </div> : <p className="countdown-status" role="status">
-                {timeLeft.status === 'in-progress' ? 'Event in progress' : 'Event completed'}
-              </p>}
-            </div>
+              {/* Precision Countdown Interface */}
+              <Countdown />
+            </motion.div>
           </div>
         </section>
 
@@ -305,15 +526,11 @@ function App() {
         >
           <div className="marquee-track">
             <div className="marquee-copy">
-              <span>
-                Organized by <strong>KG Reddy College of Engineering &amp; Technology</strong> in collaboration with the <strong>Cybersecurity &amp; Ethical Hacking Club</strong>. 36 hours of non-stop engineering to pioneer breakthroughs in Generative AI, Cyber Defense, and Autonomous Systems.
-              </span>
+              <span>{marqueeText}</span>
               <span className="marquee-separator" aria-hidden="true">◆</span>
             </div>
             <div className="marquee-copy" aria-hidden="true">
-              <span>
-                Organized by <strong>KG Reddy College of Engineering &amp; Technology</strong> in collaboration with the <strong>Cybersecurity &amp; Ethical Hacking Club</strong>. 36 hours of non-stop engineering to pioneer breakthroughs in Generative AI, Cyber Defense, and Autonomous Systems.
-              </span>
+              <span>{marqueeText}</span>
               <span className="marquee-separator">◆</span>
             </div>
           </div>
@@ -323,18 +540,18 @@ function App() {
             METRICS / STATS TICKER
             ================================================================= */}
         <section className="container">
-          <div className="metrics-row">
+          <Reveal className="metrics-row">
             {keyStats.map((item, idx) => (
-              <div className="metric-card" key={idx}>
+              <div className="metric-card" key={idx} data-glow>
                 <div className="metric-val">
-                  {item.unit === 'TRACKS' ? tracks.length : item.value}{' '}
+                  <Decode numeric text={String(item.unit === 'TRACKS' ? tracks.length : item.value)} />{' '}
                   <span className="metric-unit">{item.unit}</span>
                 </div>
                 <div className="metric-title">{item.label}</div>
                 <div className="metric-sub">{item.desc}</div>
               </div>
             ))}
-          </div>
+          </Reveal>
         </section>
 
         {/* =================================================================
@@ -342,21 +559,17 @@ function App() {
             ================================================================= */}
         <section id="about" className="section-spacing">
           <div className="container">
-            <div className="section-header">
-              <div className="section-pill gold">
-                <Sparkles size={12} />
-                WHY KGRCET HACKATHON 2027
-              </div>
-              <h2 className="section-title">
-                Build something real in <span>36 hours.</span>
-              </h2>
-              <p className="section-desc">
-                Work with your team, solve a challenge, and turn your ideas into a working project. Explore Generative AI, cybersecurity, and other technology domains alongside students from across the country.
-              </p>
-            </div>
+            <SectionHeader
+              icon={<Sparkles size={12} />}
+              tone="gold"
+              pill="WHY KGRCET HACKATHON 2027"
+              title={<>Build something real in <span>36 hours.</span></>}
+            >
+              Work with your team, solve a challenge, and turn your ideas into a working project. Explore Generative AI, cybersecurity, and other technology domains alongside students from across the country.
+            </SectionHeader>
 
             <div className="about-grid">
-              <div className="about-text-col">
+              <Reveal className="about-text-col">
                 <h3>Designed for Builders Who Refuse to Ship Mediocrity.</h3>
                 <p>
                   At <strong>KG Reddy College of Engineering &amp; Technology</strong>, we believe the best
@@ -370,7 +583,7 @@ function App() {
                 </p>
 
                 <div className="about-highlights-list">
-                  <div className="about-highlight-item">
+                  <div className="about-highlight-item" data-glow>
                     <Zap size={20} className="about-item-icon" />
                     <div className="about-item-text">
                       <h4>Zero Fluff, 100% Code</h4>
@@ -378,7 +591,7 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="about-highlight-item">
+                  <div className="about-highlight-item" data-glow>
                     <Shield size={20} className="about-item-icon" />
                     <div className="about-item-text">
                       <h4>Defensive Security Standards</h4>
@@ -386,7 +599,7 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="about-highlight-item">
+                  <div className="about-highlight-item" data-glow>
                     <Users size={20} className="about-item-icon" />
                     <div className="about-item-text">
                       <h4>Industry Mentorship</h4>
@@ -394,7 +607,7 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="about-highlight-item">
+                  <div className="about-highlight-item" data-glow>
                     <Award size={20} className="about-item-icon" />
                     <div className="about-item-text">
                       <h4>Incubation Support</h4>
@@ -402,36 +615,38 @@ function App() {
                     </div>
                   </div>
                 </div>
-              </div>
+              </Reveal>
 
               {/* Crucible Graphic Card */}
-              <div className="about-graphic-card">
+              <Reveal className="about-graphic-card" delay={0.1}>
+                <span className="corner-marks" aria-hidden="true" />
                 <div className="crucible-orbit">
                   <div className="crucible-ring-outer" />
+                  <div className="crucible-ring-middle" />
                   <div className="crucible-ring-inner" />
                   <div className="crucible-center">
                     <b>36 HOURS</b>
                     <span>SPRINT</span>
                   </div>
-
-                  <div className="crucible-badge b1">
-                    <Cpu size={12} style={{ color: 'var(--gold)' }} />
-                    GEN AI / LLMS
-                  </div>
-                  <div className="crucible-badge b2">
-                    <Lock size={12} style={{ color: 'var(--cyan)' }} />
-                    CYBER DEFENSE
-                  </div>
-                  <div className="crucible-badge b3">
-                    <Globe size={12} style={{ color: 'var(--violet)' }} />
-                    NATIONAL ARENA
-                  </div>
-                  <div className="crucible-badge b4">
-                    <Terminal size={12} style={{ color: 'var(--emerald)' }} />
-                    PROD-READY CODE
-                  </div>
                 </div>
-              </div>
+
+                <div className="crucible-badge b1">
+                  <Cpu size={13} />
+                  GEN AI / LLMS
+                </div>
+                <div className="crucible-badge b2">
+                  <Lock size={13} />
+                  CYBER DEFENSE
+                </div>
+                <div className="crucible-badge b3">
+                  <Globe size={13} />
+                  NATIONAL ARENA
+                </div>
+                <div className="crucible-badge b4">
+                  <Terminal size={13} />
+                  PROD-READY CODE
+                </div>
+              </Reveal>
             </div>
           </div>
         </section>
@@ -439,178 +654,112 @@ function App() {
         {/* =================================================================
             CHALLENGE TRACKS SECTION
             ================================================================= */}
-        <section id="tracks" className="section-spacing" style={{ background: 'var(--bg-secondary)' }}>
-          <div className="container">
-            <div className="section-header">
-              <div className="section-pill cyan">
-                <Terminal size={12} />
-                CHALLENGE FIELDS
-              </div>
-              <h2 className="section-title">
-                10 <span>Hackathon Tracks</span>
-              </h2>
-              <p className="section-desc">
+        <section id="tracks" className="section-spacing">
+          <div className="container tracks-layout">
+            <div className="tracks-aside">
+              <SectionHeader
+                icon={<Terminal size={12} />}
+                tone="cyan"
+                pill="CHALLENGE FIELDS"
+                title={<>10 <span>Hackathon Tracks</span></>}
+              >
                 Specific problem statements within these domains will be released on-spot. These provisional categories are subject to official confirmation; specific problem statements will be announced on the day of the event.
-              </p>
+              </SectionHeader>
             </div>
 
             <div className="tracks-grid">
               {tracks.map((track) => (
-                <div className="track-card" key={track.id}>
+                <Reveal className="track-card" key={track.id}>
                   <div className="track-card-header">
                     <span className="track-num-badge">{track.number}</span>
                     <span className="track-status">{track.status}</span>
                   </div>
 
                   <h3 className="track-title">{track.title}</h3>
-                </div>
+                </Reveal>
               ))}
             </div>
           </div>
         </section>
 
         {/* =================================================================
-            EVENT TIMELINE (Refined Central Spine & Alternating Panels)
+            EVENT TIMELINE (Scroll-driven beam across three milestones)
             ================================================================= */}
         <section id="schedule" className="section-spacing">
           <div className="container">
-            <div className="section-header" style={{ textAlign: 'center', margin: '0 auto 48px' }}>
-              <div className="section-pill gold">
-                <Clock size={12} />
-                SCHEDULE OVERVIEW
-              </div>
-              <h2 className="section-title">
-                Event <span>Timeline</span>
-              </h2>
-              <p className="section-desc" style={{ marginInline: 'auto' }}>
-                The official schedule for KGRCET’s 36-hour national hackathon across Day 1 and Day 2.
-              </p>
-            </div>
+            <SectionHeader
+              icon={<Clock size={12} />}
+              tone="gold"
+              pill="SCHEDULE OVERVIEW"
+              title={<>Event <span>Timeline</span></>}
+              centered
+            >
+              The official schedule for KGRCET’s 36-hour national hackathon across Day 1 and Day 2.
+            </SectionHeader>
 
-            <div className="timeline-section-wrap">
-              <div className="timeline-spine" aria-hidden="true" />
-
-              {timelineMilestones.map((item, idx) => {
-                const isLeft = idx % 2 === 0
-                return (
-                  <div
-                    key={item.id}
-                    className={`milestone-row ${isLeft ? 'is-left' : 'is-right'}`}
-                  >
-                    <div className="milestone-card-col">
-                      <div className={`milestone-card ${item.accent}`}>
-                        <span className="milestone-date">{item.date}</span>
-                        <h3 className="milestone-title">{item.title}</h3>
-                        {item.description && (
-                          <p className="milestone-desc">{item.description}</p>
-                        )}
-                        {item.details && (
-                          <ul className="milestone-details-list">
-                            {item.details.map((detail, dIdx) => (
-                              <li key={dIdx} className="milestone-detail-item">
-                                <span className="milestone-detail-dot" aria-hidden="true" />
-                                <span>{detail}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="milestone-marker-col">
-                      <div className={`milestone-dot ${item.accent}`} />
-                    </div>
-
-                    <div className="milestone-empty-col" aria-hidden="true" />
-                  </div>
-                )
-              })}
-            </div>
+            <Timeline />
           </div>
         </section>
 
         {/* =================================================================
             PRIZES & PERKS SECTION
             ================================================================= */}
-        <section id="prizes" className="section-spacing" style={{ background: 'var(--bg-secondary)' }}>
+        <section id="prizes" className="section-spacing">
           <div className="container">
-            <div className="section-header">
-              <div className="section-pill gold">
-                <Trophy size={12} />
-                AWARDS &amp; RECOGNITION
-              </div>
-              <h2 className="section-title">
-                Prestigious <span>Prize Pool</span>
-              </h2>
-              <p className="section-desc">
-                A provisional prize pool of <strong>INR 1,00,000</strong>. Award categories and distribution are yet to be announced.
-              </p>
-            </div>
+            <SectionHeader
+              icon={<Trophy size={12} />}
+              tone="gold"
+              pill="AWARDS & RECOGNITION"
+              title={<>Prestigious <span>Prize Pool</span></>}
+            >
+              A provisional prize pool of <strong>INR 1,00,000</strong>. Award categories and distribution are yet to be announced.
+            </SectionHeader>
 
             <div className="prizes-grid">
               {prizes.map((prize, idx) => (
-                <div className={`prize-card ${prize.highlight ? 'champion' : ''}`} key={idx}>
-                  <span
-                    className={`prize-badge ${
-                      idx === 0 ? 'gold' : idx === 1 ? 'silver' : 'bronze'
-                    }`}
-                  >
-                    {prize.badge}
-                  </span>
-                  <span className="prize-rank">{prize.rank}</span>
-                  <div className="prize-amount">{prize.amount}</div>
-                  <h3 className="prize-title">{prize.tier}</h3>
+                <Reveal key={idx} delay={idx * 0.08} className="prize-cell">
+                  <div className={`prize-card ${prize.highlight ? 'champion' : ''}`} data-glow data-tilt={prize.highlight ? true : undefined}>
+                    <span
+                      className={`prize-badge ${
+                        idx === 0 ? 'gold' : idx === 1 ? 'silver' : 'bronze'
+                      }`}
+                    >
+                      {prize.badge}
+                    </span>
+                    <span className="prize-rank">{prize.rank}</span>
+                    <div className="prize-amount">{prize.amount}</div>
+                    <h3 className="prize-title">{prize.tier}</h3>
 
-                  <ul className="prize-perks-list">
-                    {prize.perks.map((perk, pIdx) => (
-                      <li className="prize-perk-item" key={pIdx}>
-                        <Check size={16} className="prize-check-icon" />
-                        <span>{perk}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                    <ul className="prize-perks-list">
+                      {prize.perks.map((perk, pIdx) => (
+                        <li className="prize-perk-item" key={pIdx}>
+                          <Check size={15} className="prize-check-icon" />
+                          <span>{perk}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </Reveal>
               ))}
             </div>
 
-            <div className="section-header" style={{ marginBottom: 36, marginTop: 52 }}>
-              <h3 className="section-title" style={{ fontSize: 'clamp(1.6rem, 3vw, 2.4rem)' }}>
+            <Reveal className="section-header amenities-header">
+              <h3 className="section-title">
                 Hacker Experience &amp; <span>Amenities</span>
               </h3>
               <p className="section-desc">
                 Everything you need to focus entirely on building without distraction.
               </p>
-            </div>
+            </Reveal>
 
             <div className="perks-grid">
-              {perksList.map((perk, idx) => {
-                const getPerkIcon = (name: string) => {
-                  switch (name) {
-                    case 'coffee':
-                      return <Coffee size={22} />
-                    case 'wifi':
-                      return <Wifi size={22} />
-                    case 'package':
-                      return <Package size={22} />
-                    case 'users':
-                      return <Users size={22} />
-                    case 'award':
-                      return <Award size={22} />
-                    case 'gamepad':
-                      return <Gamepad2 size={22} />
-                    default:
-                      return <Gift size={22} />
-                  }
-                }
-
-                return (
-                  <div className="perk-card" key={idx}>
-                    <div className="perk-icon-wrap">{getPerkIcon(perk.icon)}</div>
-                    <h4>{perk.title}</h4>
-                    <p>{perk.description}</p>
-                  </div>
-                )
-              })}
+              {perksList.map((perk, idx) => (
+                <Reveal className="perk-card" key={idx} delay={(idx % 3) * 0.06}>
+                  <div className="perk-icon-wrap">{getPerkIcon(perk.icon)}</div>
+                  <h4>{perk.title}</h4>
+                  <p>{perk.description}</p>
+                </Reveal>
+              ))}
             </div>
           </div>
         </section>
@@ -620,30 +769,28 @@ function App() {
             ================================================================= */}
         <section id="organizers" className="section-spacing">
           <div className="container">
-            <div className="section-header">
-              <div className="section-pill">
-                <Users size={12} />
-                STEERING COMMITTEE
-              </div>
-              <h2 className="section-title">
-                The Leadership <span>Behind KGRCET 2027</span>
-              </h2>
-              <p className="section-desc">
-                Organized under the patronage of KG Reddy College of Engineering &amp; Technology in
-                collaboration with the student leaders of Cybersecurity &amp; Ethical Hacking Club.
-              </p>
-            </div>
+            <SectionHeader
+              icon={<Users size={12} />}
+              pill="STEERING COMMITTEE"
+              title={<>The Leadership <span>Behind KGRCET 2027</span></>}
+            >
+              Organized under the patronage of KG Reddy College of Engineering &amp; Technology in
+              collaboration with the student leaders of Cybersecurity &amp; Ethical Hacking Club.
+            </SectionHeader>
 
             <div className="organizer-sections-grid">
               {organizerGroups.map((group, gIdx) => (
-                <div className="organizer-pillar-card" key={gIdx}>
+                <Reveal className="organizer-pillar-card" key={gIdx} delay={gIdx * 0.08}>
                   <div className="pillar-header">
                     <h3 className="pillar-title">{group.title}</h3>
                     <span className="pillar-subtitle">{group.role}</span>
                   </div>
 
                   <div className="members-list">
-                    {group.entries.length === 0 ? <p className="organizer-pending">Committee details will be announced by KGRCET.</p> : group.entries.map((member, mIdx) => (
+                    {group.entries.length === 0 ? <>
+                      <div className="organizer-sealed" aria-hidden="true"><span /><span /><span /></div>
+                      <p className="organizer-pending">Committee details will be announced by KGRCET.</p>
+                    </> : group.entries.map((member, mIdx) => (
                       <div className="member-card" key={mIdx}>
                         <div className="member-avatar">
                           {member.name.split(' ').map((n) => n[0]).slice(0, 2).join('') || 'KG'}
@@ -655,7 +802,7 @@ function App() {
                       </div>
                     ))}
                   </div>
-                </div>
+                </Reveal>
               ))}
             </div>
           </div>
@@ -664,30 +811,28 @@ function App() {
         {/* =================================================================
             EVENT INFO / ESSENTIAL PARAMETERS (Simplified & Structured)
             ================================================================= */}
-        <section id="info" className="section-spacing" style={{ background: 'var(--bg-secondary)' }}>
+        <section id="info" className="section-spacing">
           <div className="container">
-            <div className="section-header">
-              <div className="section-pill cyan">
-                <Terminal size={12} />
-                KEY PARAMETERS
-              </div>
-              <h2 className="section-title">
-                Event <span>Information</span>
-              </h2>
-              <p className="section-desc">
-                Key logistical parameters, venue location, and event structure for participating student teams.
-              </p>
-            </div>
+            <SectionHeader
+              icon={<Terminal size={12} />}
+              tone="cyan"
+              pill="KEY PARAMETERS"
+              title={<>Event <span>Information</span></>}
+            >
+              Key logistical parameters, venue location, and event structure for participating student teams.
+            </SectionHeader>
 
             <div className="event-info-grid">
               {eventInfoDetails.map((item, idx) => (
-                <div className="event-info-card" key={idx}>
-                  <div className="event-info-header">
-                    <span className="event-info-title">{item.title}</span>
-                    <span className="event-info-value">{item.value}</span>
+                <Reveal className="event-info-cell" key={idx} delay={(idx % 2) * 0.06}>
+                  <div className="event-info-card" data-glow>
+                    <div className="event-info-header">
+                      <span className="event-info-title">{getInfoIcon(item.icon)}{item.title}</span>
+                      <span className="event-info-value">{item.value}</span>
+                    </div>
+                    <p className="event-info-detail">{item.detail}</p>
                   </div>
-                  <p className="event-info-detail">{item.detail}</p>
-                </div>
+                </Reveal>
               ))}
             </div>
           </div>
@@ -698,16 +843,18 @@ function App() {
           FOOTER
           ================================================================= */}
       <footer className="site-footer">
-        <div className="container footer-centered" style={{ textAlign: 'center' }}>
+        {!isRegistration && <div className="footer-watermark" aria-hidden="true">2027</div>}
+        <div className="container footer-centered">
           <p>© 2027 KGRCET Hackathon · All Rights Reserved.</p>
           <p className="footer-developer-credit">Developed by Jashanth Gonipati (24QM1A05A3)</p>
-          <address style={{ fontStyle: 'normal' }}>
+          <address>
             <p>KG Reddy College of Engineering &amp; Technology</p>
             <p>Beside Moinabad Police Station, Chilkur Village, Moinabad Mandal, Ranga Reddy District, Hyderabad, Telangana – 501504.</p>
           </address>
         </div>
       </footer>
     </div>
+    </MotionConfig>
   )
 }
 
