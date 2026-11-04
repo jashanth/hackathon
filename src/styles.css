@@ -694,3 +694,84 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .hero-marquee { overflow: visible; mask-image: none; -webkit-mask-image: none; }
   .hero-marquee .marquee-copy { display: block; padding: 13px 20px; }
 }
+
+/* ==========================================================================
+   The world beyond the horizon: the interface's second theme
+   ========================================================================== */
+.threshold { height: 300vh; }
+.threshold-stage { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden; pointer-events: none; }
+.threshold-caption {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 0;
+  padding: var(--header-height) clamp(24px, 8vw, 120px) 0;
+  color: #fbf6e8;
+  text-align: center;
+  font: 300 clamp(38px, 6vw, 92px)/1.06 var(--font-display);
+  text-shadow: 0 2px 30px rgba(4, 3, 8, .95), 0 0 80px rgba(4, 3, 8, .9), 0 0 6px rgba(4, 3, 8, .55);
+}
+.threshold-caption span { max-width: 7.5em; text-wrap: balance; }
+.threshold-caption::before { content: ''; position: absolute; z-index: -1; left: 50%; top: 50%; width: min(1000px, 130vw); height: min(620px, 80vh); transform: translate(-50%, -46%); background: radial-gradient(closest-side, rgba(4, 3, 8, .62), rgba(4, 3, 8, .34) 58%, transparent); }
+.threshold-arrival span { max-width: none; }
+.threshold-arrival::before { display: none; }
+.threshold-caption em { color: #f3d48f; }
+:root[data-theme='light'] .threshold-caption::before { background: radial-gradient(closest-side, rgba(16, 10, 28, .86), rgba(16, 10, 28, .62) 60%, transparent); }
+:root[data-theme='light'] .threshold-arrival { color: #11163a; text-shadow: 0 1px 26px rgba(255, 255, 255, .9), 0 0 60px rgba(255, 255, 255, .7); }
+:root[data-theme='light'] .threshold-arrival em { color: #2c3191; }
+:root[data-theme='light'] .threshold-arrival small { color: #1e2270; }
+.threshold-caption small { font: 400 clamp(11px, 1vw, 13px) var(--font-mono); letter-spacing: .24em; text-transform: uppercase; color: #f3d48f; }
+.threshold-arrival { padding-bottom: 26vh; }
+:root[data-cosmos='off'] .threshold { height: 0; }
+:root[data-cosmos='off'] .threshold-stage { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .threshold { height: 70vh; }
+  .threshold-stage { display: none; }
+}
+
+:root[data-theme='dark'][data-realm='world'] {
+  --void: #060a1e;
+  --surface: rgba(11, 16, 44, .62);
+  --surface-strong: rgba(8, 12, 34, .88);
+  --surface-solid: #0a1032;
+  --ink: #f7f2e4;
+  --ink-soft: #c8cde2;
+  --ink-faint: #a0a7c6;
+  --gold: #eccf8e;
+  --gold-bright: #fcf0cc;
+  --gold-deep: #a4843f;
+  --amethyst: #bda8f2;
+  --line: rgba(236, 207, 142, .2);
+  --line-strong: rgba(236, 207, 142, .44);
+  --glow: rgba(236, 207, 142, .12);
+  --grid-line: rgba(236, 207, 142, .03);
+  --scrim: rgba(5, 8, 26, .55);
+  --foil: linear-gradient(105deg, #a4843f 0%, #eccf8e 22%, #fff8e1 42%, #eccf8e 58%, #b4934a 78%, #fcf0cc 100%);
+}
+
+:root[data-theme='light'][data-realm='world'] {
+  --void: #eef0f9;
+  --surface: rgba(252, 252, 255, .72);
+  --surface-strong: rgba(252, 252, 255, .93);
+  --surface-solid: #fbfbff;
+  --ink: #11163a;
+  --ink-soft: #383f62;
+  --ink-faint: #545b80;
+  --gold: #2c3191;
+  --gold-bright: #1e2270;
+  --gold-deep: #94762f;
+  --amethyst: #7a5a12;
+  --line: rgba(30, 34, 112, .16);
+  --line-strong: rgba(30, 34, 112, .38);
+  --glow: rgba(44, 49, 145, .09);
+  --grid-line: rgba(30, 34, 112, .045);
+  --scrim: rgba(238, 240, 249, .5);
+  --foil: linear-gradient(105deg, #1e2270 0%, #2c3191 30%, #94762f 55%, #2c3191 75%, #1e2270 100%);
+  --btn-text: #f8f6ec;
+}
+:root[data-theme='dark'][data-realm='world'] .footer-centered { text-shadow: 0 1px 16px rgba(5, 8, 26, .95), 0 0 4px rgba(5, 8, 26, .6); }
+:root[data-theme='light'][data-realm='world'] .btn-primary-luxury, :root[data-theme='light'][data-realm='world'] .btn-header-register { background: #171b57; box-shadow: 0 10px 30px -12px rgba(23, 27, 87, .6); }

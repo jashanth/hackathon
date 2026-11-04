@@ -1,7 +1,8 @@
-import { StrictMode, useCallback, useEffect, useRef, useState } from 'react'
+import { StrictMode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { AnimatePresence, MotionConfig, motion, useMotionValueEvent, useScroll } from 'framer-motion'
+import { AnimatePresence, MotionConfig, motion, useMotionValueEvent, useScroll, useTransform } from 'framer-motion'
+import type { MotionValue } from 'framer-motion'
 import {
   ArrowRight,
   ArrowUpRight,
@@ -249,6 +250,41 @@ function Timeline() {
   )
 }
 
+function ThresholdCaption({ progress, input, opacity, className = '', children }: {
+  progress: MotionValue<number>
+  input: number[]
+  opacity: number[]
+  className?: string
+  children: ReactNode
+}) {
+  const fade = useTransform(progress, input, opacity)
+  const y = useTransform(progress, [input[0], input[input.length - 1]], [28, -28])
+  return <motion.p className={`threshold-caption ${className}`} style={{ opacity: fade, y }}>{children}</motion.p>
+}
+
+/** Empty scroll distance for the dive through the horizon. Cosmos draws the journey behind these captions. */
+function Threshold() {
+  const runway = useRef<HTMLDivElement>(null)
+  const { scrollYProgress } = useScroll({ target: runway, offset: ['start start', 'end end'] })
+
+  return (
+    <div id="threshold" className="threshold" ref={runway}>
+      <div className="threshold-stage">
+        <ThresholdCaption progress={scrollYProgress} input={[0.01, 0.07, 0.2, 0.26]} opacity={[0, 1, 1, 0]}>
+          <span>Leave the <em>ordinary</em> behind.</span>
+        </ThresholdCaption>
+        <ThresholdCaption progress={scrollYProgress} input={[0.27, 0.33, 0.44, 0.5]} opacity={[0, 1, 1, 0]}>
+          <span>Past this point, only what you <em>build</em> remains.</span>
+        </ThresholdCaption>
+        <ThresholdCaption progress={scrollYProgress} input={[0.82, 0.9, 1]} opacity={[0, 1, 1]} className="threshold-arrival">
+          <small>KGRCET's Hackathon 2027</small>
+          <span>Welcome to the <em>other side.</em></span>
+        </ThresholdCaption>
+      </div>
+    </div>
+  )
+}
+
 const getPerkIcon = (name: string) => {
   switch (name) {
     case 'coffee':
@@ -305,6 +341,7 @@ function App() {
   const isSubpage = isRegistration || isAdmin
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
+  const [realm, setRealm] = useState<'void' | 'world'>(isSubpage ? 'world' : 'void')
   const [showIgnition, setShowIgnition] = useState(() => shouldPlayIgnition(isSubpage))
   const [entered, setEntered] = useState(!showIgnition)
   const activeSection = useActiveSection(!isSubpage)
@@ -322,6 +359,10 @@ function App() {
     }
     return 'dark'
   })
+
+  useLayoutEffect(() => {
+    document.documentElement.dataset.realm = realm
+  }, [realm])
 
   // Apply theme to document
   useEffect(() => {
@@ -347,7 +388,12 @@ function App() {
   }, [menuOpen])
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24)
+    const onScroll = () => {
+      setScrolled(window.scrollY > 24)
+      // The whole interface crosses over once the gate has opened around the viewer.
+      const runway = document.getElementById('threshold')?.getBoundingClientRect()
+      if (runway) setRealm(runway.top < -(runway.height - window.innerHeight) * 0.72 ? 'world' : 'void')
+    }
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
@@ -556,6 +602,8 @@ function App() {
             ))}
           </Reveal>
         </section>
+
+        <Threshold />
 
         {/* =================================================================
             ABOUT / VISION SECTION (Simple English)
