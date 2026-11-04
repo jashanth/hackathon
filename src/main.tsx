@@ -1,4 +1,4 @@
-import { StrictMode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AnimatePresence, MotionConfig, motion, useMotionValueEvent, useScroll, useTransform } from 'framer-motion'
@@ -45,7 +45,7 @@ import './styles.css'
 import Registration from './Registration'
 import Admin from './Admin'
 import Cosmos from './world/Cosmos'
-import { Decode, Ignition, Reveal, useSurfaceEffects } from './world/fx'
+import { Decode, Reveal, useSurfaceEffects } from './world/fx'
 import collegeLogo from '../assets/kgrcet-logo.png'
 
 interface CountdownState {
@@ -325,15 +325,6 @@ const marqueeText = <>
   Organized by <strong>KG Reddy College of Engineering &amp; Technology</strong> in collaboration with the <strong>Cybersecurity &amp; Ethical Hacking Club</strong>. 36 hours of non-stop engineering to pioneer breakthroughs in Generative AI, Cyber Defense, and Autonomous Systems.
 </>
 
-const shouldPlayIgnition = (isRegistration: boolean) => {
-  if (isRegistration || window.location.hash || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false
-  try {
-    if (sessionStorage.getItem('kgrcet-ignition')) return false
-    sessionStorage.setItem('kgrcet-ignition', '1')
-  } catch { /* Without storage the intro simply plays again. */ }
-  return true
-}
-
 function App() {
   const pathname = window.location.pathname.replace(/\/+$/, '')
   const isRegistration = pathname === '/register'
@@ -342,8 +333,6 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const [realm, setRealm] = useState<'void' | 'world'>(isSubpage ? 'world' : 'void')
-  const [showIgnition, setShowIgnition] = useState(() => shouldPlayIgnition(isSubpage))
-  const [entered, setEntered] = useState(!showIgnition)
   const activeSection = useActiveSection(!isSubpage)
 
   useSurfaceEffects()
@@ -399,14 +388,6 @@ function App() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  useEffect(() => {
-    if (!entered || !showIgnition) return
-    const timer = setTimeout(() => setShowIgnition(false), 1000)
-    return () => clearTimeout(timer)
-  }, [entered, showIgnition])
-
-  const onEntered = useCallback(() => setEntered(true), [])
-
   const toggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark'
     try { localStorage.setItem('kgrcet-theme', nextTheme) } catch { /* Theme preference is optional. */ }
@@ -416,7 +397,7 @@ function App() {
 
   const heroLine = (delay: number) => ({
     initial: { opacity: 0, y: 34, filter: 'blur(14px)' },
-    animate: entered ? { opacity: 1, y: 0, filter: 'blur(0px)' } : undefined,
+    animate: { opacity: 1, y: 0, filter: 'blur(0px)' },
     transition: { duration: 1.3, delay, ease: [0.16, 1, 0.3, 1] as const },
   })
 
@@ -426,7 +407,6 @@ function App() {
       <Cosmos theme={theme} fixed={isSubpage} />
       <div className="grid-overlay" aria-hidden="true" />
       <div className="grain-overlay" aria-hidden="true" />
-      {showIgnition && <Ignition onDone={onEntered} />}
       {!isSubpage && <Hud active={activeSection} />}
 
       {/* =================================================================

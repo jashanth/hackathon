@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { motion } from 'framer-motion'
-import collegeLogo from '../../assets/kgrcet-logo.png'
 
 const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
@@ -91,51 +90,4 @@ export function useSurfaceEffects() {
     window.addEventListener('pointermove', onMove, { passive: true })
     return () => window.removeEventListener('pointermove', onMove)
   }, [])
-}
-
-/** Plays once per browser session: the phoenix wakes while a counter climbs to 36, then the view opens. */
-export function Ignition({ onDone }: { onDone: () => void }) {
-  const [count, setCount] = useState(0)
-  const [leaving, setLeaving] = useState(false)
-  const finished = useRef(false)
-
-  useEffect(() => {
-    const finish = () => {
-      if (finished.current) return
-      finished.current = true
-      setLeaving(true)
-      onDone()
-    }
-    const started = performance.now()
-    let frame = 0
-    const draw = (now: number) => {
-      const progress = Math.min(1, (now - started) / 1700)
-      setCount(Math.round((1 - Math.pow(1 - progress, 3)) * 36))
-      if (progress < 1) frame = requestAnimationFrame(draw)
-      else finish()
-    }
-    frame = requestAnimationFrame(draw)
-    window.addEventListener('keydown', finish)
-    window.addEventListener('pointerdown', finish)
-    return () => {
-      cancelAnimationFrame(frame)
-      window.removeEventListener('keydown', finish)
-      window.removeEventListener('pointerdown', finish)
-    }
-  }, [onDone])
-
-  return (
-    <motion.div
-      className="ignition"
-      aria-hidden="true"
-      initial={{ opacity: 1 }}
-      animate={leaving ? { opacity: 0, scale: 1.08 } : { opacity: 1 }}
-      transition={{ duration: 0.9, ease: [0.7, 0, 0.2, 1] }}
-      style={{ pointerEvents: leaving ? 'none' : 'auto' }}
-    >
-      <div className="ignition-phoenix" style={{ backgroundImage: `url(${collegeLogo})` }} />
-      <div className="ignition-count">{String(count).padStart(2, '0')}</div>
-      <div className="ignition-line"><span style={{ transform: `scaleX(${count / 36})` }} /></div>
-    </motion.div>
-  )
 }
