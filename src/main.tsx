@@ -268,14 +268,14 @@ function Threshold() {
     <div id="threshold" className="threshold" ref={runway}>
       <div className="threshold-stage">
         <ThresholdCaption progress={scrollYProgress} input={[0.01, 0.07, 0.2, 0.26]} opacity={[0, 1, 1, 0]}>
-          <span>Leave the <em>ordinary</em> behind.</span>
+          <span>Ideas Are The <em>Only</em> Things Without Limits.</span>
         </ThresholdCaption>
         <ThresholdCaption progress={scrollYProgress} input={[0.27, 0.33, 0.44, 0.5]} opacity={[0, 1, 1, 0]}>
-          <span>Past this point, only what you <em>build</em> remains.</span>
+          <span>Are You Ready To Make<em>Something</em> Matter?</span>
         </ThresholdCaption>
         <ThresholdCaption progress={scrollYProgress} input={[0.82, 0.9, 1]} opacity={[0, 1, 1]} className="threshold-arrival">
           <small>KGRCET's Hackathon 2027</small>
-          <span>Welcome to the <em>other side.</em></span>
+          <span>Welcome to the <em>World Of Possibilities.</em></span>
         </ThresholdCaption>
       </div>
     </div>
@@ -593,12 +593,12 @@ function App() {
               pill="WHY KGRCET HACKATHON 2027"
               title={<>Build something real in <span>36 hours.</span></>}
             >
-              Work with your team, solve a challenge, and turn your ideas into a working project. Explore Generative AI, cybersecurity, and other technology domains alongside students from across the country.
+              Work with your team, solve a challenge, and turn your ideas into a working project. Explore different areas of technology, and build amazing projects with students from across the country.
             </SectionHeader>
 
             <div className="about-grid">
               <Reveal className="about-text-col">
-                <h3>Designed for Builders Who Refuse to Ship Mediocrity.</h3>
+                <h3>Made for people who love to build great things.</h3>
                 <p>
                   At <strong>KG Reddy College of Engineering &amp; Technology</strong>, we believe the best
                   software and hardware systems are forged when razor-sharp talent meets a focused 36-hour sprint,

@@ -47,7 +47,7 @@ export const navigation = [
 export const keyStats = [
   { value: '1,00,000', unit: 'INR', label: 'Provisional Prize Pool', desc: 'Final award details to be announced' },
   { value: '36', unit: 'HOURS', label: 'Continuous Building', desc: 'A focused, live build window' },
-  { value: '300+', unit: 'BUILDERS', label: 'National Participants', desc: 'A national student community' },
+  { value: '700+', unit: 'BUILDERS', label: 'National Participants', desc: 'A national student community' },
   { value: '10', unit: 'TRACKS', label: 'Challenge Fields', desc: 'Provisional problem domains' },
 ]
 
