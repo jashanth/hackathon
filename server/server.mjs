@@ -1,5 +1,5 @@
 import http from 'node:http'
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
 import { mkdirSync } from 'node:fs'
 import { extname, join, normalize, resolve } from 'node:path'
@@ -33,6 +33,7 @@ function rulesFromEnvironment() {
   return { minTeamSize, maxTeamSize, submissionEnabled: process.env.SUBMISSION_ENABLED === 'true' && minTeamSize !== null && maxTeamSize !== null && minTeamSize <= maxTeamSize }
 }
 
+const sha256 = (value) => createHash('sha256').update(String(value), 'utf8').digest('hex')
 function hashToken(token) { return createHash('sha256').update(token).digest('hex') }
 function json(res, status, value, extra = {}) {
   const body = JSON.stringify(value)
@@ -86,13 +87,118 @@ function validateData(data, rules) {
 
 export const ADMIN_ACCOUNTS = Object.freeze([
   {
+    username: 'jashanth',
+    email: 'jashanth@ikarus.kgrcet.ac.in',
+    name: 'Jashanth',
+    role: 'council_admin',
+    clubId: 'all',
+    clubName: 'Central Council',
+    passwords: ['123', 'jashanth@123'],
+  },
+  {
+    email: 'admin@ikarus.kgrcet.ac.in',
+    name: 'Festival Central Council',
+    role: 'council_admin',
+    clubId: 'all',
+    clubName: 'Central Council (All Clubs)',
+    passwords: ['ikarus2026admin'],
+  },
+  {
+    email: 'dsa@ikarus.kgrcet.ac.in',
+    name: 'Dean Student Affairs (DSA)',
+    role: 'council_admin',
+    clubId: 'all',
+    clubName: 'Dean Student Affairs (DSA)',
+    passwords: ['dsa@ikarus2026'],
+  },
+  {
+    email: 'appweb@ikarus.kgrcet.ac.in',
+    name: 'App and Web Club Lead',
+    role: 'club_admin',
+    clubId: 'app-web',
+    clubName: 'App and Web Club',
+    passwords: ['appweb@ikarus2026'],
+  },
+  {
+    email: 'ai@ikarus.kgrcet.ac.in',
+    name: 'AI Club Coordinator',
+    role: 'club_admin',
+    clubId: 'ai',
+    clubName: 'AI Club',
+    passwords: ['ai@ikarus2026'],
+  },
+  {
+    email: 'cybersec@ikarus.kgrcet.ac.in',
+    name: 'Cyber Security Club Lead',
+    role: 'club_admin',
+    clubId: 'cybersecurity',
+    clubName: 'Cybersecurity and Ethical Hacking Club',
+    passwords: ['cybersec@ikarus2026'],
+  },
+  {
+    email: 'iot@ikarus.kgrcet.ac.in',
+    name: 'IoT Club Coordinator',
+    role: 'club_admin',
+    clubId: 'iot',
+    clubName: 'IoT Club',
+    passwords: ['iot@ikarus2026'],
+  },
+  {
+    email: 'gcc@ikarus.kgrcet.ac.in',
+    name: 'GCC Lead',
+    role: 'club_admin',
+    clubId: 'gcc',
+    clubName: 'GCC',
+    passwords: ['gcc@ikarus2026'],
+  },
+  {
+    email: 'sae@ikarus.kgrcet.ac.in',
+    name: 'SAE India Club Coordinator',
+    role: 'club_admin',
+    clubId: 'sae-india',
+    clubName: 'SAE India Club',
+    passwords: ['sae@ikarus2026'],
+  },
+  {
+    email: '3dprinting@ikarus.kgrcet.ac.in',
+    name: '3D Printing Club Lead',
+    role: 'club_admin',
+    clubId: '3d-printing',
+    clubName: '3D Printing Club',
+    passwords: ['3dprinting@ikarus2026'],
+  },
+  {
+    email: 'datascience@ikarus.kgrcet.ac.in',
+    name: 'Data Science Club Lead',
+    role: 'club_admin',
+    clubId: 'data-science',
+    clubName: 'Data Science Club',
+    passwords: ['datascience@ikarus2026'],
+  },
+  {
+    email: 'blockchain@ikarus.kgrcet.ac.in',
+    name: 'Blockchain Club Lead',
+    role: 'club_admin',
+    clubId: 'blockchain',
+    clubName: 'Blockchain Club',
+    passwords: ['blockchain@ikarus2026'],
+  },
+  {
+    username: 'saivaibhav',
     email: 'saivaibhavaluguri@gmail.com',
     name: 'Aluguri SaiVaibhav',
+    role: 'council_admin',
+    clubId: 'all',
+    clubName: 'Central Council',
     passwords: ['123', '123456789012'],
   },
   {
+    username: 'jashanthgonipati',
     email: 'jashanthgonipati@gmail.com',
     name: 'Jashanth Gonipati',
+    role: 'council_admin',
+    clubId: 'all',
+    clubName: 'Central Council',
     passwords: ['123', 'jashanth@123'],
   },
 ])
@@ -106,12 +212,45 @@ function parseAdminAccounts(source) {
   const parsed = []
   for (const account of accounts) {
     if (!account || typeof account.email !== 'string' || typeof account.name !== 'string') continue
-    const passwords = Array.isArray(account.passwords)
-      ? account.passwords.map(String)
-      : (typeof account.password === 'string' ? [account.password] : [])
-    parsed.push({ email: account.email.trim(), name: account.name.trim(), passwords })
+    let passwordSha256 = []
+    if (Array.isArray(account.passwordSha256)) {
+      passwordSha256 = account.passwordSha256.map((h) => String(h).toLowerCase())
+    } else if (account.passwordSha256) {
+      passwordSha256 = [String(account.passwordSha256).toLowerCase()]
+    } else {
+      const rawPasswords = Array.isArray(account.passwords)
+        ? account.passwords
+        : (typeof account.password === 'string' ? [account.password] : [])
+      const alternates = Array.isArray(account.alternatePasswords) ? account.alternatePasswords : []
+      passwordSha256 = [...rawPasswords, ...alternates].map((p) =>
+        p.length === 64 && /^[0-9a-fA-F]+$/.test(p) ? p.toLowerCase() : sha256(p)
+      )
+    }
+    parsed.push({
+      email: account.email.trim(),
+      username: account.username ? account.username.trim() : undefined,
+      name: account.name.trim(),
+      passwordSha256,
+      role: account.role || 'council_admin',
+      clubId: account.clubId || 'all',
+      clubName: account.clubName,
+    })
   }
   return parsed
+}
+
+export function verifyAdmin(accounts, identifier, password) {
+  const id = String(identifier || '').trim().toLowerCase()
+  const candidate = Buffer.from(sha256(String(password || '')), 'hex')
+  let matched = null
+  for (const account of accounts) {
+    const idMatches = account.email?.toLowerCase() === id || (account.username && account.username.toLowerCase() === id)
+    for (const hash of account.passwordSha256) {
+      const stored = Buffer.from(hash, 'hex')
+      if (stored.length === candidate.length && timingSafeEqual(stored, candidate) && idMatches) matched = account
+    }
+  }
+  return matched
 }
 
 function adminCookie(value, maxAge, secure) {
@@ -230,21 +369,21 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
 
   async function adminLogin(req, res) {
     const input = await body(req)
-    if (!input || typeof input.email !== 'string' || typeof input.password !== 'string' || input.email.length > 254 || input.password.length > 1024) return error(res, 400, 'invalid credentials')
+    const identifier = typeof input?.identifier === 'string' ? input.identifier : (typeof input?.email === 'string' ? input.email : '')
+    const password = typeof input?.password === 'string' ? input.password : ''
+    if (!identifier || !password || identifier.length > 254 || password.length > 1024) return error(res, 400, 'invalid credentials')
     const accounts = parseAdminAccounts(configuredAdminAccounts)
     if (!accounts) return error(res, 503, 'Admin account configuration is invalid.')
     if (!accounts.length) return error(res, 503, 'Admin accounts are not configured on this server.')
     const now = Date.now()
     const ip = clientIp(req)
-    const email = input.email.trim().toLowerCase()
-    const attemptKey = `${ip}|${email}`
+    const attemptKey = `${ip}|${identifier.trim().toLowerCase()}`
     const attempts = loginAttempts.get(attemptKey)
     const ipFailures = loginFailuresByIp.get(ip)
     if (ipFailures && ipFailures.resetAt > now && ipFailures.count >= 30) return error(res, 429, 'Too many failed login attempts from this network. Please try again later.')
     if (attempts && attempts.lockedUntil > now) return json(res, 429, { error: 'Too many failed login attempts. Please wait before trying again.', locked: true, remainingLockoutSeconds: Math.ceil((attempts.lockedUntil - now) / 1000) })
-    const account = accounts.find((candidate) => candidate.email.trim().toLowerCase() === email)
-    const matches = Boolean(account && account.passwords.includes(input.password))
-    if (!account || !matches) {
+    const account = verifyAdmin(accounts, identifier, password)
+    if (!account) {
       // Random emails must not grow these maps without limit.
       if (loginAttempts.size > 10000) loginAttempts.clear()
       if (loginFailuresByIp.size > 10000) loginFailuresByIp.clear()

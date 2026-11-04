@@ -74,7 +74,7 @@ function downloadCsv(registrations: AdminRegistration[]) {
 }
 
 function Login({ onLogin, notice }: { onLogin: (session: Session) => void; notice: string }) {
-  const [email, setEmail] = useState('')
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -93,7 +93,7 @@ function Login({ onLogin, notice }: { onLogin: (session: Session) => void; notic
     setSubmitting(true)
     setError('')
     try {
-      const result = await api<{ session: Session }>('login', 'POST', { email, password })
+      const result = await api<{ session: Session }>('login', 'POST', { identifier, email: identifier, password })
       onLogin(result.session)
     } catch (loginError) {
       setPassword('')
@@ -110,7 +110,8 @@ function Login({ onLogin, notice }: { onLogin: (session: Session) => void; notic
       <h1>Sign in to <span>Console.</span></h1>
       <p className="admin-login-lede">Only for KGRCET Hackathon organizers.</p>
       <div className="admin-security">
-        <span><ShieldCheck size={13} /> Authorized Organizers Only</span>
+        <span><ShieldCheck size={13} /> Constant-Time Auth</span>
+        <span><Sparkles size={13} /> SHA-256 Hashing</span>
       </div>
 
       {notice && !error && <p className="admin-notice" role="status">{notice}</p>}
@@ -126,14 +127,39 @@ function Login({ onLogin, notice }: { onLogin: (session: Session) => void; notic
 
       <form onSubmit={submit} className="admin-login-form">
         <div className="form-group">
-          <label htmlFor="admin-email">Organizer email</label>
-          <input id="admin-email" className="form-input" type="email" required autoComplete="username" value={email} onChange={(changeEvent) => setEmail(changeEvent.target.value)} />
+          <label htmlFor="admin-identifier">Organizer username or email</label>
+          <input
+            id="admin-identifier"
+            className="form-input"
+            type="text"
+            required
+            autoComplete="username"
+            autoCapitalize="none"
+            spellCheck="false"
+            placeholder="e.g. jashanth or admin@ikarus.kgrcet.ac.in"
+            value={identifier}
+            onChange={(changeEvent) => setIdentifier(changeEvent.target.value)}
+          />
         </div>
         <div className="form-group">
           <label htmlFor="admin-password">Password</label>
           <div className="admin-password">
-            <input id="admin-password" className="form-input" type={showPassword ? 'text' : 'password'} required autoComplete="current-password" value={password} onChange={(changeEvent) => setPassword(changeEvent.target.value)} />
-            <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'} title={showPassword ? 'Hide password' : 'Show password'}>
+            <input
+              id="admin-password"
+              className="form-input"
+              type={showPassword ? 'text' : 'password'}
+              required
+              placeholder="Enter password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(changeEvent) => setPassword(changeEvent.target.value)}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              title={showPassword ? 'Hide password' : 'Show password'}
+            >
               {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>
