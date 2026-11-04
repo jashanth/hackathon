@@ -219,7 +219,7 @@ export function createApp({ dbPath = databasePath, adminAccountsJson = process.e
     if (!input || typeof input.email !== 'string' || typeof input.password !== 'string' || input.email.length > 254 || input.password.length > 1024) return error(res, 400, 'invalid credentials')
     const accounts = adminAccounts(adminAccountsJson)
     if (!accounts) return error(res, 503, 'Admin account configuration is invalid.')
-    if (!accounts.length) return error(res, 503, 'Admin accounts are not configured.')
+    if (!accounts.length) return error(res, 503, 'Admin accounts are not configured on this server. Follow the "Admin console" steps in the README to add one.')
     const now = Date.now()
     const ip = clientIp(req)
     const email = input.email.trim().toLowerCase()

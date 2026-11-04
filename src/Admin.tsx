@@ -29,6 +29,8 @@ class ApiError extends Error {
   }
 }
 
+const serverUnavailable = 'The server is not responding. Make sure the backend is running, then try again.'
+
 async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(`/api/admin/${path}`, {
     method,
@@ -36,8 +38,10 @@ async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> 
     cache: 'no-store',
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
-  })
-  const result = await response.json().catch(() => ({}))
+  }).catch(() => { throw new ApiError(serverUnavailable, 0) })
+  // The API always answers in JSON, so anything else came from a proxy or static host in front of it.
+  const result = await response.json().catch(() => null)
+  if (!result) throw new ApiError(serverUnavailable, response.status)
   if (!response.ok) throw new ApiError(result.error || 'The request could not be completed.', response.status, result.remainingLockoutSeconds)
   return result as T
 }
@@ -558,16 +562,19 @@ export default function Admin() {
   const [checking, setChecking] = useState(true)
   const [checkError, setCheckError] = useState('')
   const [notice, setNotice] = useState('')
+  const [checkAttempt, setCheckAttempt] = useState(0)
 
   useEffect(() => {
     let active = true
+    setChecking(true)
+    setCheckError('')
     api<{ session: Session | null }>('session').then((result) => {
       if (active) setSession(result.session)
     }).catch((sessionError: unknown) => {
       if (active) setCheckError(errorText(sessionError, 'Could not verify the admin session.'))
     }).finally(() => { if (active) setChecking(false) })
     return () => { active = false }
-  }, [])
+  }, [checkAttempt])
 
   // Keeps the address bar on the page actually shown.
   useEffect(() => {
@@ -592,7 +599,12 @@ export default function Admin() {
   }
 
   if (checking) return <main className="admin-login container"><p role="status">Verifying administrator session…</p></main>
-  if (checkError) return <main className="admin-login container"><p className="admin-error" role="alert">{checkError}</p></main>
+  if (checkError) return (
+    <main className="admin-login container">
+      <p className="admin-error" role="alert">{checkError}</p>
+      <button type="button" className="btn-secondary-luxury" onClick={() => setCheckAttempt((attempt) => attempt + 1)}>Try again</button>
+    </main>
+  )
   if (!session) return <Login notice={notice} onLogin={(next) => { setNotice(''); setSession(next) }} />
   return <Dashboard session={session} onSignOut={() => void signOut()} onExpired={onExpired} />
 }
