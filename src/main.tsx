@@ -897,7 +897,7 @@ function App() {
         {!isSubpage && <div className="footer-watermark" aria-hidden="true">2027</div>}
         <div className="container footer-centered">
           <p>© 2027 KGRCET Hackathon · All Rights Reserved.</p>
-          <p className="footer-developer-credit">Developed by Jashanth Gonipati (24QM1A05A3)</p>
+          <p className="footer-developer-credit">Developed by Jashanth Gonipati (24QM1A05A3) & Aluguri SaiVaibhav (24QM1A0514) </p>
           <address>
             <p>KG Reddy College of Engineering &amp; Technology</p>
             <p>Beside Moinabad Police Station, Chilkur Village, Moinabad Mandal, Ranga Reddy District, Hyderabad, Telangana – 501504.</p>
