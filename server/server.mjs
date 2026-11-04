@@ -1,6 +1,5 @@
 import http from 'node:http'
-import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
-import { promisify } from 'node:util'
+import { createHash, randomBytes } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
 import { mkdirSync } from 'node:fs'
 import { extname, join, normalize, resolve } from 'node:path'
@@ -16,9 +15,6 @@ const cookieTtlSeconds = 60 * 60 * 24 * 30
 const adminCookieName = 'kgrcet_admin'
 const adminSessionTtlSeconds = 60 * 60 * 4
 const reviewStatuses = ['pending', 'valid', 'invalid']
-const scryptAsync = promisify(scrypt)
-// Checked when an email has no account, so a login takes the same time whether or not the account exists.
-const unusedPasswordHash = `scrypt$${'0'.repeat(32)}$${'0'.repeat(128)}`
 const contentTypes = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml',
@@ -88,18 +84,34 @@ function validateData(data, rules) {
   return null
 }
 
-function adminAccounts(serialized) {
-  let accounts
-  try { accounts = JSON.parse(serialized || '[]') } catch { return null }
-  if (!Array.isArray(accounts)) return null
-  return accounts.filter((account) => account && typeof account.email === 'string' && typeof account.name === 'string' && typeof account.passwordHash === 'string')
-}
+export const ADMIN_ACCOUNTS = Object.freeze([
+  {
+    email: 'saivaibhavaluguri@gmail.com',
+    name: 'Aluguri SaiVaibhav',
+    passwords: ['123', '123456789012'],
+  },
+  {
+    email: 'jashanthgonipati@gmail.com',
+    name: 'Jashanth Gonipati',
+    passwords: ['123', 'jashanth@123'],
+  },
+])
 
-async function passwordMatches(password, encoded) {
-  const [scheme, salt, expected] = encoded.split('$')
-  if (scheme !== 'scrypt' || !/^[\da-f]{32,128}$/i.test(salt || '') || !/^[\da-f]{128}$/i.test(expected || '')) return false
-  const actual = await scryptAsync(password, Buffer.from(salt, 'hex'), 64)
-  return timingSafeEqual(actual, Buffer.from(expected, 'hex'))
+function parseAdminAccounts(source) {
+  let accounts = source
+  if (typeof accounts === 'string') {
+    try { accounts = JSON.parse(accounts) } catch { return null }
+  }
+  if (!Array.isArray(accounts)) return null
+  const parsed = []
+  for (const account of accounts) {
+    if (!account || typeof account.email !== 'string' || typeof account.name !== 'string') continue
+    const passwords = Array.isArray(account.passwords)
+      ? account.passwords.map(String)
+      : (typeof account.password === 'string' ? [account.password] : [])
+    parsed.push({ email: account.email.trim(), name: account.name.trim(), passwords })
+  }
+  return parsed
 }
 
 function adminCookie(value, maxAge, secure) {
@@ -139,7 +151,8 @@ function cleanRegistration(data) {
   }
 }
 
-export function createApp({ dbPath = databasePath, adminAccountsJson = process.env.ADMIN_ACCOUNTS_JSON } = {}) {
+export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJson } = {}) {
+  const configuredAdminAccounts = adminAccounts ?? adminAccountsJson ?? ADMIN_ACCOUNTS
   mkdirSync(resolve(dbPath, '..'), { recursive: true })
   const db = new DatabaseSync(dbPath)
   db.exec(`PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;
@@ -206,7 +219,8 @@ export function createApp({ dbPath = databasePath, adminAccountsJson = process.e
     const row = db.prepare('SELECT email, name FROM admin_sessions WHERE token_hash = ? AND expires_at > ?').get(hashToken(token), Date.now())
     if (!row) return null
     // Removing an account from the configuration ends its sessions immediately.
-    const account = (adminAccounts(adminAccountsJson) || []).some((candidate) => candidate.email.trim().toLowerCase() === row.email.trim().toLowerCase())
+    const accounts = parseAdminAccounts(configuredAdminAccounts) || []
+    const account = accounts.some((candidate) => candidate.email.trim().toLowerCase() === row.email.trim().toLowerCase())
     if (!account) {
       db.prepare('DELETE FROM admin_sessions WHERE token_hash = ?').run(hashToken(token))
       return null
@@ -217,9 +231,9 @@ export function createApp({ dbPath = databasePath, adminAccountsJson = process.e
   async function adminLogin(req, res) {
     const input = await body(req)
     if (!input || typeof input.email !== 'string' || typeof input.password !== 'string' || input.email.length > 254 || input.password.length > 1024) return error(res, 400, 'invalid credentials')
-    const accounts = adminAccounts(adminAccountsJson)
+    const accounts = parseAdminAccounts(configuredAdminAccounts)
     if (!accounts) return error(res, 503, 'Admin account configuration is invalid.')
-    if (!accounts.length) return error(res, 503, 'Admin accounts are not configured on this server. Follow the "Admin console" steps in the README to add one.')
+    if (!accounts.length) return error(res, 503, 'Admin accounts are not configured on this server.')
     const now = Date.now()
     const ip = clientIp(req)
     const email = input.email.trim().toLowerCase()
@@ -229,7 +243,7 @@ export function createApp({ dbPath = databasePath, adminAccountsJson = process.e
     if (ipFailures && ipFailures.resetAt > now && ipFailures.count >= 30) return error(res, 429, 'Too many failed login attempts from this network. Please try again later.')
     if (attempts && attempts.lockedUntil > now) return json(res, 429, { error: 'Too many failed login attempts. Please wait before trying again.', locked: true, remainingLockoutSeconds: Math.ceil((attempts.lockedUntil - now) / 1000) })
     const account = accounts.find((candidate) => candidate.email.trim().toLowerCase() === email)
-    const matches = await passwordMatches(input.password, account?.passwordHash || unusedPasswordHash)
+    const matches = Boolean(account && account.passwords.includes(input.password))
     if (!account || !matches) {
       // Random emails must not grow these maps without limit.
       if (loginAttempts.size > 10000) loginAttempts.clear()

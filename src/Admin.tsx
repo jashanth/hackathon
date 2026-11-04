@@ -110,8 +110,7 @@ function Login({ onLogin, notice }: { onLogin: (session: Session) => void; notic
       <h1>Sign in to <span>Console.</span></h1>
       <p className="admin-login-lede">Only for KGRCET Hackathon organizers.</p>
       <div className="admin-security">
-        <span><ShieldCheck size={13} /> Constant-Time Auth</span>
-        <span><Sparkles size={13} /> Scrypt Password Hashing</span>
+        <span><ShieldCheck size={13} /> Authorized Organizers Only</span>
       </div>
 
       {notice && !error && <p className="admin-notice" role="status">{notice}</p>}
