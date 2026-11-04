@@ -93,45 +93,6 @@ export function useSurfaceEffects() {
   }, [])
 }
 
-/** Trailing reticle for mouse users. It sits on top of the native cursor rather than replacing it. */
-export function Reticle() {
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const node = ref.current
-    if (!node || !window.matchMedia('(hover: hover) and (pointer: fine)').matches || prefersReducedMotion()) return
-    let frame = 0
-    let x = -100
-    let y = -100
-    let targetX = -100
-    let targetY = -100
-    const onMove = (pointerEvent: PointerEvent) => {
-      targetX = pointerEvent.clientX
-      targetY = pointerEvent.clientY
-      node.dataset.visible = 'true'
-      const target = pointerEvent.target instanceof Element ? pointerEvent.target : null
-      node.dataset.active = target?.closest('a, button, input, label') ? 'true' : 'false'
-    }
-    const onLeave = () => { node.dataset.visible = 'false' }
-    const draw = () => {
-      x += (targetX - x) * 0.2
-      y += (targetY - y) * 0.2
-      node.style.transform = `translate3d(${x}px, ${y}px, 0)`
-      frame = requestAnimationFrame(draw)
-    }
-    frame = requestAnimationFrame(draw)
-    window.addEventListener('pointermove', onMove, { passive: true })
-    document.documentElement.addEventListener('pointerleave', onLeave)
-    return () => {
-      cancelAnimationFrame(frame)
-      window.removeEventListener('pointermove', onMove)
-      document.documentElement.removeEventListener('pointerleave', onLeave)
-    }
-  }, [])
-
-  return <div ref={ref} className="reticle" aria-hidden="true"><span /></div>
-}
-
 /** Plays once per browser session: the phoenix wakes while a counter climbs to 36, then the view opens. */
 export function Ignition({ onDone }: { onDone: () => void }) {
   const [count, setCount] = useState(0)

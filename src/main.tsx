@@ -42,8 +42,9 @@ import {
 } from './config/event'
 import './styles.css'
 import Registration from './Registration'
+import Admin from './Admin'
 import Cosmos from './world/Cosmos'
-import { Decode, Ignition, Reticle, Reveal, useSurfaceEffects } from './world/fx'
+import { Decode, Ignition, Reveal, useSurfaceEffects } from './world/fx'
 import collegeLogo from '../assets/kgrcet-logo.png'
 
 interface CountdownState {
@@ -298,12 +299,15 @@ const shouldPlayIgnition = (isRegistration: boolean) => {
 }
 
 function App() {
-  const isRegistration = window.location.pathname.replace(/\/+$/, '') === '/register'
+  const pathname = window.location.pathname.replace(/\/+$/, '')
+  const isRegistration = pathname === '/register'
+  const isAdmin = pathname === '/admin' || pathname === '/admin/login'
+  const isSubpage = isRegistration || isAdmin
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
-  const [showIgnition, setShowIgnition] = useState(() => shouldPlayIgnition(isRegistration))
+  const [showIgnition, setShowIgnition] = useState(() => shouldPlayIgnition(isSubpage))
   const [entered, setEntered] = useState(!showIgnition)
-  const activeSection = useActiveSection(!isRegistration)
+  const activeSection = useActiveSection(!isSubpage)
 
   useSurfaceEffects()
 
@@ -373,19 +377,18 @@ function App() {
   return (
     <MotionConfig reducedMotion="user">
     <div className="site-shell">
-      <Cosmos theme={theme} fixed={isRegistration} />
+      <Cosmos theme={theme} fixed={isSubpage} />
       <div className="grid-overlay" aria-hidden="true" />
       <div className="grain-overlay" aria-hidden="true" />
-      <Reticle />
       {showIgnition && <Ignition onDone={onEntered} />}
-      {!isRegistration && <Hud active={activeSection} />}
+      {!isSubpage && <Hud active={activeSection} />}
 
       {/* =================================================================
           HEADER & SUBSTANTIAL COLLEGE IDENTITY
           ================================================================= */}
       <header className="site-header" data-scrolled={scrolled}>
         <div className="container header-inner">
-          <a href={isRegistration ? '/' : '#top'} className="brand-link" aria-label="KG Reddy College of Engineering and Technology - KGRCET Hackathon 2027">
+          <a href={isSubpage ? '/' : '#top'} className="brand-link" aria-label="KG Reddy College of Engineering and Technology - KGRCET Hackathon 2027">
             <span className="brand-plaque">
               <img
                 className="brand-college-logo"
@@ -401,7 +404,7 @@ function App() {
             </div>
           </a>
 
-          {!isRegistration && <nav className="desktop-nav" aria-label="Primary Desktop Navigation">
+          {!isSubpage && <nav className="desktop-nav" aria-label="Primary Desktop Navigation">
             {navigation.map((item) => (
               <a key={item.href} href={item.href} aria-current={activeSection === item.href ? 'true' : undefined}>
                 {item.label}
@@ -410,7 +413,7 @@ function App() {
           </nav>}
 
           <div className="header-right">
-            {isRegistration && <a href="/" className="back-to-overview">Back to Overview</a>}
+            {isSubpage && <a href="/" className="back-to-overview">Back to Overview</a>}
             <button
               onClick={toggleTheme}
               className="theme-toggle-btn"
@@ -420,9 +423,9 @@ function App() {
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
 
-            {!isRegistration && <>
+            {!isSubpage && <>
             <a href="/register" className="btn-header-register">
-              <span>Start Team Draft</span>
+              <span>Register</span>
               <Sparkles size={14} />
             </a>
 
@@ -442,7 +445,7 @@ function App() {
 
       {/* Mobile Sliding Drawer */}
       <AnimatePresence>
-        {!isRegistration && menuOpen && (
+        {!isSubpage && menuOpen && (
           <motion.div
             className="mobile-nav-drawer"
             id="mobile-navigation"
@@ -469,7 +472,7 @@ function App() {
             </div>
             <div className="mobile-drawer-footer">
               <a href="/register" className="btn-primary-luxury is-wide">
-                <span>Start a Team Draft</span>
+                <span>Register</span>
                 <Sparkles size={15} />
               </a>
             </div>
@@ -477,7 +480,7 @@ function App() {
         )}
       </AnimatePresence>
 
-      {isRegistration ? <Registration /> : <main id="top">
+      {isAdmin ? <Admin /> : isRegistration ? <Registration /> : <main id="top">
         {/* =================================================================
             HERO SECTION
             ================================================================= */}
@@ -502,7 +505,7 @@ function App() {
                 {/* Action Buttons */}
                 <div className="hero-cta-group">
                   <a href="/register" className="btn-primary-luxury">
-                    <span>Start a Team Draft</span>
+                    <span>Register</span>
                     <ArrowRight size={16} />
                   </a>
 
@@ -843,7 +846,7 @@ function App() {
           FOOTER
           ================================================================= */}
       <footer className="site-footer">
-        {!isRegistration && <div className="footer-watermark" aria-hidden="true">2027</div>}
+        {!isSubpage && <div className="footer-watermark" aria-hidden="true">2027</div>}
         <div className="container footer-centered">
           <p>© 2027 KGRCET Hackathon · All Rights Reserved.</p>
           <p className="footer-developer-credit">Developed by Jashanth Gonipati (24QM1A05A3)</p>
@@ -851,6 +854,7 @@ function App() {
             <p>KG Reddy College of Engineering &amp; Technology</p>
             <p>Beside Moinabad Police Station, Chilkur Village, Moinabad Mandal, Ranga Reddy District, Hyderabad, Telangana – 501504.</p>
           </address>
+          {!isAdmin && <a href="/admin/login" className="footer-admin-link">Admin Login ✦</a>}
         </div>
       </footer>
     </div>

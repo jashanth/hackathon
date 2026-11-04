@@ -238,7 +238,7 @@ export default function Registration() {
   return <main className="registration container">
     <header className="registration-intro">
       <p className="registration-eyebrow">KGRCET HACKATHON 2027 / {event.dateDisplay}</p>
-      <h1>Start your team draft</h1>
+      <h1>Register your team</h1>
       <p>Start with your team. Add your people. Review together.</p>
     </header>
     {loading ? <p role="status">Loading your server draft...</p> : loadError ? <section className="registration-panel">

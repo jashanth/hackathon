@@ -107,26 +107,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   opacity: .07;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
-.reticle {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 120;
-  pointer-events: none;
-  will-change: transform;
-}
-.reticle span {
-  position: absolute;
-  width: 30px;
-  height: 30px;
-  margin: -15px 0 0 -15px;
-  border: 1px solid var(--gold);
-  border-radius: 50%;
-  opacity: 0;
-  transition: width .35s var(--ease), height .35s var(--ease), margin .35s var(--ease), opacity .25s ease, background .25s ease;
-}
-.reticle[data-visible='true'] span { opacity: .55; }
-.reticle[data-active='true'] span { width: 52px; height: 52px; margin: -26px 0 0 -26px; opacity: .9; background: var(--glow); }
 .ignition {
   position: fixed;
   inset: 0;
@@ -664,6 +644,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .container { padding-inline: 18px; }
   .brand-link { gap: 10px; }
   .brand-college-logo { height: 32px; }
+  .back-to-overview { max-width: 76px; line-height: 1.25; text-align: right; white-space: normal; }
   .brand-plaque { padding: 4px 7px; }
   .brand-name { flex-direction: column; gap: 3px; font-size: 11px; letter-spacing: .05em; }
   .hero-title-line, .hero-title-year { font-size: 11.5vw; }
@@ -693,6 +674,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .track-card:hover { padding-left: 4px; }
   .prizes-grid, .perks-grid { grid-template-columns: 1fr; }
   .champion .prize-amount { font-size: clamp(52px, 15.5vw, 80px); }
+}
+
+@media (max-width: 380px) {
+  /* Pages with a back link keep the logo, so the header controls still fit. */
+  .header-inner:has(.back-to-overview) .brand-titles { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
