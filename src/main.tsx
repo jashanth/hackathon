@@ -871,15 +871,49 @@ function App() {
           FOOTER
           ================================================================= */}
       <footer className="site-footer">
-        {!isSubpage && <div className="footer-watermark" aria-hidden="true">2027</div>}
-        <div className="container footer-centered">
-          <p>© 2027 KGRCET Hackathon · All Rights Reserved.</p>
-          <p className="footer-developer-credit">Developed by Jashanth Gonipati (24QM1A05A3) & Aluguri SaiVaibhav (24QM1A0514) </p>
-          <address>
-            <p>KG Reddy College of Engineering &amp; Technology</p>
-            <p>Beside Moinabad Police Station, Chilkur Village, Moinabad Mandal, Ranga Reddy District, Hyderabad, Telangana – 501504.</p>
-          </address>
-          {!isAdmin && <a href="/admin/login" className="footer-admin-link">Admin Login ✦</a>}
+        <div className="container footer-container">
+          <div className="footer-grid">
+            <div className="footer-col footer-col-brand">
+              <div className="footer-brand-title">
+                KGRCET <span className="footer-brand-year">2027</span>
+              </div>
+              <p className="footer-tagline">
+                A 36-hour national level hackathon at KG Reddy College of Engineering &amp; Technology, Hyderabad.
+              </p>
+            </div>
+
+            <div className="footer-col footer-col-developers">
+              <h4 className="footer-col-header">DEVELOPED BY</h4>
+              <div className="footer-col-body">
+                <p className="footer-developer-credit">
+                  Jashanth Gonipati (24QM1A05A3) <br /> Aluguri SaiVaibhav (24QM1A0514)
+                </p>
+              </div>
+            </div>
+
+            <div className="footer-col footer-col-venue">
+              <h4 className="footer-col-header">CAMPUS VENUE</h4>
+              <div className="footer-col-body">
+                <p className="footer-venue-name">{event.institution}</p>
+                <p className="footer-venue-address">
+                  Chilkur Village, Moinabad, Hyderabad — 501504
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="footer-divider" />
+
+          <div className="footer-bottom">
+            <p className="footer-copyright">
+              © 2027 KGRCET · ALL RIGHTS RESERVED.
+            </p>
+            {!isAdmin && (
+              <a href="/admin/login" className="footer-admin-link">
+                ADMIN LOGIN ✦
+              </a>
+            )}
+          </div>
         </div>
       </footer>
     </div>
