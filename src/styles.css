@@ -113,8 +113,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .hud-rail span { position: absolute; inset: 0; background: var(--gold); transform: scaleY(0); transform-origin: top; box-shadow: 0 0 10px var(--gold); }
 .hud-readout { position: absolute; bottom: 24px; display: flex; gap: 22px; writing-mode: vertical-rl; transform: rotate(180deg); opacity: 0; transition: opacity .5s ease; }
 .hud-readout[data-visible='true'] { opacity: 1; }
-.hud-left { left: 24px; }
-.hud-left b { font-weight: 400; color: var(--gold); }
 .hud-right { right: 34px; font-variant-numeric: tabular-nums; }
 
 /* ==========================================================================
@@ -524,13 +522,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 /* ==========================================================================
    Footer
    ========================================================================== */
-.site-footer { position: relative; padding: clamp(60px, 8vw, 120px) 0 clamp(70px, 7vw, 96px); overflow: hidden; background: linear-gradient(transparent, var(--scrim)); border-top: 1px solid var(--line); }
+.site-footer { position: relative; padding: clamp(28px, 4vw, 44px) 0 clamp(22px, 3vw, 32px); overflow: hidden; background: linear-gradient(transparent, var(--scrim)); border-top: 1px solid var(--line); }
 .footer-watermark {
   position: absolute;
   left: 50%;
   bottom: -.2em;
   transform: translateX(-50%);
-  font: 300 clamp(170px, 32vw, 560px)/1 var(--font-display);
+  font: 300 clamp(70px, 14vw, 150px)/1 var(--font-display);
   font-variant-numeric: lining-nums;
   letter-spacing: -.01em;
   white-space: nowrap;
@@ -539,10 +537,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   pointer-events: none;
   user-select: none;
 }
-.footer-centered { max-width: 720px; color: var(--ink-soft); font-size: 14px; line-height: 1.7; text-align: center; }
-.footer-centered p { margin: 0 0 8px; }
-.footer-centered address { margin: 22px auto 0; max-width: 560px; font-style: normal; }
-.footer-centered .footer-developer-credit { color: var(--gold); font: 400 13px var(--font-mono); }
+.footer-centered { max-width: 720px; color: var(--ink-soft); font-size: 13px; line-height: 1.5; text-align: center; }
+.footer-centered p { margin: 0 0 4px; }
+.footer-centered address { margin: 10px auto 0; max-width: 560px; font-style: normal; }
+.footer-centered address p { margin: 0 0 2px; }
+.footer-centered .footer-developer-credit { color: var(--gold); font: 400 12.5px var(--font-mono); margin-bottom: 4px; }
 
 /* Shared registration form controls */
 .form-grid { display: grid; gap: 14px; margin-top: 24px; }

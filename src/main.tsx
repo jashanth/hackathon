@@ -177,9 +177,6 @@ function Hud({ active }: { active: string }) {
   return (
     <div className="hud" aria-hidden="true">
       <div className="hud-rail"><span ref={fill} /></div>
-      <div className="hud-readout hud-left" data-visible={Boolean(current)}>
-        <b>{current?.label}</b>
-      </div>
       <div className="hud-readout hud-right" data-visible={Boolean(current)}>
         {timeLeft.status === 'upcoming' && <span>T− {timeLeft.days}D {pad(timeLeft.hours)}:{pad(timeLeft.minutes)}:{pad(timeLeft.seconds)}</span>}
         <span><span ref={percent}>000</span>%</span>
