@@ -148,14 +148,16 @@ When deployed behind an Nginx reverse proxy (e.g. at `https://hackathon.cybersec
 
 ## Session Management
 
-- **Hardened Cookie**: Stored under cookie name `__Host-admin` with flags `HttpOnly; SameSite=Strict; Path=/; Secure`.
+- **Hardened Persistent Cookie**: Stored under cookie name `__Host-admin` with flags `HttpOnly; SameSite=Strict; Path=/; Secure` and `Max-Age=31536000` (1 year). Closing the browser does not log the organizer out.
 - **Token Security**: 32 cryptographically random bytes (`crypto.randomBytes(32)`). Only the SHA-256 hash is stored in SQLite table `admin_sessions`. Pre-login tokens are revoked upon successful authentication.
-- **Timeouts**:
-  - **Sliding Idle Expiry**: Configurable via `ADMIN_SESSION_IDLE_MINUTES` (default 480 minutes / 8 hours). Every authenticated request extends the session and re-issues the cookie `Max-Age` to match. The frontend also pings every 5 minutes while active.
-  - **Absolute Expiry**: Configurable via `ADMIN_SESSION_MAX_HOURS` (default 24 hours). Sessions hard-expire after this duration regardless of activity.
+- **Session Lifetime**:
+  - By default, sessions **never expire by elapsed time**. Organizers remain logged in indefinitely until manual logout, password change, or session clear.
+  - Optional absolute limit via `ADMIN_SESSION_MAX_HOURS` (unset or `0` = no expiry).
 - **Session Revocation**:
   - Single session logout: `POST /api/admin/logout` (destroys active session and clears cookie).
   - All-device logout: `POST /api/admin/logout-all` (deletes all active sessions for that admin account).
+  - Password change: modifying an account's password hash in `ADMIN_ACCOUNTS_JSON` automatically invalidates all previous sessions for that account.
+  - Global reset script: `npm run clear-admin-sessions` clears all admin sessions from the database.
 - **Deny-by-Default**: Every `/api/admin/*` endpoint (except public login and session check) requires a valid session; unauthenticated requests receive `HTTP 401`.
 
 ---
@@ -186,8 +188,7 @@ All admin login attempts are recorded in SQLite table `admin_audit_log` (`timest
 | `PORT` | Listening port for Node server | `3002` (default `3001`) |
 | `DATABASE_PATH` | Path to SQLite database file | `data/registration.sqlite` |
 | `ADMIN_ACCOUNTS_JSON` | JSON string defining allowlisted admins & scrypt hashes | See example above |
-| `ADMIN_SESSION_IDLE_MINUTES` | Sliding idle timeout in minutes (extends on activity) | `480` (8 hours) |
-| `ADMIN_SESSION_MAX_HOURS` | Maximum absolute session lifetime in hours | `24` |
+| `ADMIN_SESSION_MAX_HOURS` | Optional absolute session lifetime in hours (`unset` or `0` = never expire) | Optional (default: no expiry) |
 | `PUBLIC_ORIGIN` | Single authorized origin for CSRF/Origin validation | `https://hackathon.cybersec-kgrcet.com` |
 | `TRUST_PROXY` | Whether Node sits behind a trusted reverse proxy | `true` or `false` |
 | `SUBMISSION_ENABLED` | Whether public registrations are accepted | `true` or `false` |
@@ -227,8 +228,8 @@ PUBLIC_ORIGIN=https://hackathon.cybersec-kgrcet.com
 TRUST_PROXY=true
 DATABASE_PATH=/srv/hackathon/data/registration.sqlite
 ADMIN_ACCOUNTS_JSON='[{"email":"saivaibhavaluguri@gmail.com","name":"Aluguri SaiVaibhav","passwordHash":"scrypt$<salt-hex>$<hash-hex>"},{"email":"jashanthgonipati@gmail.com","username":"jashanth","name":"Jashanth Gonipati","passwordHash":"scrypt$<salt-hex>$<hash-hex>"}]'
-ADMIN_SESSION_IDLE_MINUTES=480
-ADMIN_SESSION_MAX_HOURS=24
+# Optional absolute limit: unset = sessions never expire by time
+# ADMIN_SESSION_MAX_HOURS=24
 
 SUBMISSION_ENABLED=true
 REGISTRATION_MIN_TEAM_SIZE=2

@@ -14,18 +14,11 @@ const maxLoginBodyBytes = 4 * 1024
 const cookieName = 'registration_resume'
 const cookieTtlSeconds = 60 * 60 * 24 * 30
 const adminCookieName = '__Host-admin'
-export const DEFAULT_ADMIN_SESSION_IDLE_MINUTES = 480 // 8 hours
-export const DEFAULT_ADMIN_SESSION_MAX_HOURS = 24
+export const ADMIN_COOKIE_MAX_AGE = 31536000 // 1 year
 
-export function getSessionLifetimes(env = process.env) {
-  const idleMin = Number(env?.ADMIN_SESSION_IDLE_MINUTES)
-  const maxHr = Number(env?.ADMIN_SESSION_MAX_HOURS)
-  const idleMinutes = Number.isFinite(idleMin) && idleMin > 0 ? idleMin : DEFAULT_ADMIN_SESSION_IDLE_MINUTES
-  const maxHours = Number.isFinite(maxHr) && maxHr > 0 ? maxHr : DEFAULT_ADMIN_SESSION_MAX_HOURS
-  return {
-    idleSeconds: Math.max(1, Math.round(idleMinutes * 60)),
-    absoluteSeconds: Math.max(1, Math.round(maxHours * 3600)),
-  }
+export function getAdminSessionMaxHours(env = process.env) {
+  const val = Number(env?.ADMIN_SESSION_MAX_HOURS)
+  return Number.isFinite(val) && val > 0 ? val : 0
 }
 const reviewStatuses = ['pending', 'valid', 'invalid']
 const contentTypes = {
@@ -206,7 +199,7 @@ function cookieHeader(token, secure) {
   return `${cookieName}=${encodeURIComponent(token)}; Max-Age=${cookieTtlSeconds}; Path=/; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`
 }
 
-function adminCookie(value, maxAge, secure) {
+function adminCookie(value, maxAge = ADMIN_COOKIE_MAX_AGE, secure) {
   return `${adminCookieName}=${value}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`
 }
 
@@ -399,7 +392,8 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       created_at INTEGER NOT NULL,
       last_active_at INTEGER NOT NULL,
       absolute_expires_at INTEGER NOT NULL,
-      idle_expires_at INTEGER NOT NULL
+      idle_expires_at INTEGER NOT NULL,
+      password_hash TEXT
     );
     CREATE TABLE IF NOT EXISTS admin_login_attempts (
       target_key TEXT PRIMARY KEY,
@@ -419,7 +413,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
     );
   `)
 
-  // Migrate older admin_sessions table if missing last_active_at
+  // Migrate older admin_sessions table if missing last_active_at or password_hash
   const adminSessionCols = new Set(db.prepare('PRAGMA table_info(admin_sessions)').all().map((c) => c.name))
   if (!adminSessionCols.has('last_active_at')) {
     db.exec('DROP TABLE admin_sessions')
@@ -430,8 +424,11 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       created_at INTEGER NOT NULL,
       last_active_at INTEGER NOT NULL,
       absolute_expires_at INTEGER NOT NULL,
-      idle_expires_at INTEGER NOT NULL
+      idle_expires_at INTEGER NOT NULL,
+      password_hash TEXT
     )`)
+  } else if (!adminSessionCols.has('password_hash')) {
+    db.exec('ALTER TABLE admin_sessions ADD COLUMN password_hash TEXT')
   }
 
   const draftColumns = new Set(db.prepare('PRAGMA table_info(drafts)').all().map((column) => column.name))
@@ -523,27 +520,24 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
     if (!token) return null
     const now = Date.now()
     const tokenHash = hashToken(token)
-    const row = db.prepare('SELECT email, name, absolute_expires_at, idle_expires_at FROM admin_sessions WHERE token_hash = ?').get(tokenHash)
+    const row = db.prepare('SELECT email, name, absolute_expires_at, password_hash FROM admin_sessions WHERE token_hash = ?').get(tokenHash)
     if (!row) return null
 
-    if (now >= row.absolute_expires_at || now >= row.idle_expires_at) {
+    if (row.absolute_expires_at > 0 && now >= row.absolute_expires_at) {
       db.prepare('DELETE FROM admin_sessions WHERE token_hash = ?').run(tokenHash)
       return null
     }
 
     const accounts = parseAdminAccounts(configuredAdminAccounts) || []
     const account = accounts.find((candidate) => candidate.email.toLowerCase() === row.email.toLowerCase())
-    if (!account) {
-      db.prepare('DELETE FROM admin_sessions WHERE token_hash = ?').run(tokenHash)
+    if (!account || (row.password_hash && row.password_hash !== account.passwordHash)) {
+      db.prepare('DELETE FROM admin_sessions WHERE LOWER(email) = LOWER(?)').run(row.email)
       return null
     }
 
-    const { idleSeconds } = getSessionLifetimes(process.env)
-    const newIdle = Math.min(row.absolute_expires_at, now + idleSeconds * 1000)
-    db.prepare('UPDATE admin_sessions SET last_active_at = ?, idle_expires_at = ? WHERE token_hash = ?').run(now, newIdle, tokenHash)
+    db.prepare('UPDATE admin_sessions SET last_active_at = ? WHERE token_hash = ?').run(now, tokenHash)
 
-    const remainingSeconds = Math.max(1, Math.ceil((newIdle - now) / 1000))
-    return { email: row.email, name: row.name, token, remainingSeconds }
+    return { email: row.email, name: row.name, token }
   }
 
   async function adminLogin(req, res) {
@@ -610,8 +604,8 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
     clearLoginAttempts(accountKey)
     recordAuditLog({ ip, email: matchedAccount.email, result: 'success', userAgent })
 
-    // Clean expired sessions
-    db.prepare('DELETE FROM admin_sessions WHERE absolute_expires_at <= ? OR idle_expires_at <= ?').run(now, now)
+    // Clean expired sessions (only if an absolute expiry limit is configured)
+    db.prepare('DELETE FROM admin_sessions WHERE absolute_expires_at > 0 AND absolute_expires_at <= ?').run(now)
 
     // Remove any pre-existing session token from this client's cookie
     const oldCookies = parseCookies(req.headers.cookie)
@@ -622,20 +616,17 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
 
     const token = randomBytes(32).toString('hex')
     const tokenHash = hashToken(token)
-    const { idleSeconds, absoluteSeconds } = getSessionLifetimes(process.env)
-    const absExpiry = now + absoluteSeconds * 1000
-    const idleExpiry = now + idleSeconds * 1000
+    const maxHours = getAdminSessionMaxHours(process.env)
+    const absExpiry = maxHours > 0 ? now + Math.round(maxHours * 3600 * 1000) : 0
 
-    db.prepare('INSERT INTO admin_sessions VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(tokenHash, matchedAccount.email, matchedAccount.name, now, now, absExpiry, idleExpiry)
-
-    const cookieMaxAge = Math.max(1, Math.ceil((Math.min(absExpiry, idleExpiry) - now) / 1000))
+    db.prepare('INSERT INTO admin_sessions (token_hash, email, name, created_at, last_active_at, absolute_expires_at, idle_expires_at, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(tokenHash, matchedAccount.email, matchedAccount.name, now, now, absExpiry, 0, matchedAccount.passwordHash)
 
     return json(
       res,
       200,
       { session: { email: matchedAccount.email, name: matchedAccount.name } },
-      { 'Set-Cookie': adminCookie(token, cookieMaxAge, secure) }
+      { 'Set-Cookie': adminCookie(token, ADMIN_COOKIE_MAX_AGE, secure) }
     )
   }
 
@@ -666,7 +657,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
     if (url.pathname === '/api/admin/session' && req.method === 'GET') {
       const admin = currentAdmin(req)
       if (admin) {
-        res.setHeader('Set-Cookie', adminCookie(admin.token, admin.remainingSeconds, secure))
+        res.setHeader('Set-Cookie', adminCookie(admin.token, ADMIN_COOKIE_MAX_AGE, secure))
         return json(res, 200, { session: { email: admin.email, name: admin.name } })
       }
       return json(res, 200, { session: null })
@@ -677,7 +668,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
     if (!admin) return error(res, 401, 'admin session required')
 
     if (url.pathname !== '/api/admin/logout' && url.pathname !== '/api/admin/logout-all') {
-      res.setHeader('Set-Cookie', adminCookie(admin.token, admin.remainingSeconds, secure))
+      res.setHeader('Set-Cookie', adminCookie(admin.token, ADMIN_COOKIE_MAX_AGE, secure))
     }
 
     // 5. Logout

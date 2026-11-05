@@ -73,7 +73,7 @@ function downloadCsv(registrations: AdminRegistration[]) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
-function Login({ onLogin, notice }: { onLogin: (session: Session) => void; notice: string }) {
+function Login({ onLogin }: { onLogin: (session: Session) => void }) {
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -113,7 +113,6 @@ function Login({ onLogin, notice }: { onLogin: (session: Session) => void; notic
         <span><ShieldCheck size={13} /> Constant-Time Auth</span>
       </div>
 
-      {notice && !error && <p className="admin-notice" role="status">{notice}</p>}
       {lockout > 0 && (
         <div className="admin-lockout" role="alert">
           <AlertCircle size={20} />
@@ -252,7 +251,7 @@ function CountRow({ label, value, children }: { label: string; value: ReactNode;
   return <div className="admin-count-row"><span>{label}</span>{children}<b>{value}</b></div>
 }
 
-function Dashboard({ session, onSignOut, onExpired }: { session: Session; onSignOut: () => void; onExpired: () => void }) {
+function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; onSignOut: () => void; onUnauthorized: () => void }) {
   const [tab, setTab] = useState<Tab>('registrations')
   const [registrations, setRegistrations] = useState<AdminRegistration[]>([])
   const [draftsInProgress, setDraftsInProgress] = useState(0)
@@ -270,24 +269,6 @@ function Dashboard({ session, onSignOut, onExpired }: { session: Session; onSign
   const [updating, setUpdating] = useState<string | null>(null)
   const editHeading = useRef<HTMLHeadingElement>(null)
 
-  // When an action request encounters an error, verify with the session endpoint
-  // rather than immediately showing "Your session has ended" on a transient failure.
-  const verifySessionOrError = async (fallbackErrorMessage: string, actionError: unknown) => {
-    try {
-      const check = await api<{ session: Session | null }>('session')
-      if (!check?.session) {
-        onExpired()
-        return
-      }
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) {
-        onExpired()
-        return
-      }
-    }
-    setError(errorText(actionError, fallbackErrorMessage))
-  }
-
   useEffect(() => {
     let active = true
     api<{ registrations: AdminRegistration[]; draftsInProgress: number; rules: Rules }>('registrations').then((result) => {
@@ -295,16 +276,13 @@ function Dashboard({ session, onSignOut, onExpired }: { session: Session; onSign
       setRegistrations(result.registrations)
       setDraftsInProgress(result.draftsInProgress)
       setRules(result.rules)
-    }).catch(async (loadError: unknown) => {
+    }).catch((loadError: unknown) => {
       if (!active) return
-      if (loadError instanceof ApiError && loadError.status === 401) {
-        await verifySessionOrError('Could not load registrations.', loadError)
-      } else {
-        setError(errorText(loadError, 'Could not load registrations.'))
-      }
+      if (loadError instanceof ApiError && loadError.status === 401) onUnauthorized()
+      else setError(errorText(loadError, 'Could not load registrations.'))
     }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [onExpired])
+  }, [onUnauthorized])
 
   const editingReceipt = editing?.receipt
   useEffect(() => {
@@ -375,24 +353,19 @@ function Dashboard({ session, onSignOut, onExpired }: { session: Session; onSign
       replace(result.registration)
       setToast(`${teamName} marked ${statusLabels[status].toLowerCase()}.`)
     } catch (statusError) {
-      if (statusError instanceof ApiError && statusError.status === 401) {
-        await verifySessionOrError('Could not update the registration.', statusError)
-      } else {
-        setError(errorText(statusError, 'Could not update the registration.'))
-      }
+      if (statusError instanceof ApiError && statusError.status === 401) onUnauthorized()
+      else setError(errorText(statusError, 'Could not update the registration.'))
     } finally {
       setUpdating(null)
     }
   }
 
-  // Lets the form show the message, unless the session has ended and it must close.
+  // Lets the form show the message, unless the session is unauthorized and must close.
   const saving = async (save: () => Promise<void>) => {
     try {
       await save()
     } catch (saveError) {
-      if (saveError instanceof ApiError && saveError.status === 401) {
-        await verifySessionOrError('Could not save registration.', saveError)
-      }
+      if (saveError instanceof ApiError && saveError.status === 401) onUnauthorized()
       throw saveError
     }
   }
@@ -611,7 +584,6 @@ export default function Admin() {
   const [session, setSession] = useState<Session | null>(null)
   const [checking, setChecking] = useState(true)
   const [checkError, setCheckError] = useState('')
-  const [notice, setNotice] = useState('')
   const [checkAttempt, setCheckAttempt] = useState(0)
 
   useEffect(() => {
@@ -633,60 +605,13 @@ export default function Admin() {
     if (window.location.pathname.replace(/\/+$/, '') !== path) window.history.replaceState(null, '', path)
   }, [session, checking])
 
-  const onExpired = useMemo(() => () => {
+  const onUnauthorized = () => {
     setSession(null)
-    setNotice('Your session has ended. Please sign in again.')
-  }, [])
-
-  // Periodic keepalive: when the user is active, call /api/admin/session every ~5 minutes
-  useEffect(() => {
-    if (!session) return
-
-    let lastActivity = Date.now()
-    const onActivity = () => {
-      lastActivity = Date.now()
-    }
-
-    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart']
-    for (const ev of events) {
-      window.addEventListener(ev, onActivity, { passive: true })
-    }
-
-    const KEEPALIVE_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
-    const ACTIVE_THRESHOLD_MS = 15 * 60 * 1000 // Active within last 15 minutes
-
-    const timer = setInterval(async () => {
-      const isVisible = typeof document !== 'undefined' && document.visibilityState === 'visible'
-      const wasActive = Date.now() - lastActivity < ACTIVE_THRESHOLD_MS
-
-      if (isVisible || wasActive) {
-        try {
-          const res = await api<{ session: Session | null }>('session')
-          if (!res?.session) {
-            setSession(null)
-            setNotice('Your session has ended. Please sign in again.')
-          }
-        } catch (err) {
-          if (err instanceof ApiError && err.status === 401) {
-            setSession(null)
-            setNotice('Your session has ended. Please sign in again.')
-          }
-        }
-      }
-    }, KEEPALIVE_INTERVAL_MS)
-
-    return () => {
-      for (const ev of events) {
-        window.removeEventListener(ev, onActivity)
-      }
-      clearInterval(timer)
-    }
-  }, [session])
+  }
 
   async function signOut() {
     try {
       await api('logout', 'POST', {})
-      setNotice('')
       setSession(null)
     } catch (signOutError) {
       window.alert(errorText(signOutError, 'Could not sign out. Please try again.'))
@@ -700,6 +625,6 @@ export default function Admin() {
       <button type="button" className="btn-secondary-luxury" onClick={() => setCheckAttempt((attempt) => attempt + 1)}>Try again</button>
     </main>
   )
-  if (!session) return <Login notice={notice} onLogin={(next) => { setNotice(''); setSession(next) }} />
-  return <Dashboard session={session} onSignOut={() => void signOut()} onExpired={onExpired} />
+  if (!session) return <Login onLogin={(next) => setSession(next)} />
+  return <Dashboard session={session} onSignOut={() => void signOut()} onUnauthorized={onUnauthorized} />
 }

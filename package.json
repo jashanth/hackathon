@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "start": "node --env-file-if-exists=.env server/server.mjs",
     "hash-admin-password": "node server/hash-admin-password.mjs",
+    "clear-admin-sessions": "node --env-file-if-exists=.env server/clear-admin-sessions.mjs",
     "test:server": "node --test server/*.test.mjs"
   },
   "dependencies": {
