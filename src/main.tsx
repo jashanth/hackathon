@@ -325,7 +325,7 @@ const marqueeText = <>
 function App() {
   const pathname = window.location.pathname.replace(/\/+$/, '')
   const isRegistration = pathname === '/register'
-  const isAdmin = pathname === '/admin' || pathname === '/admin/login'
+  const isAdmin = pathname === '/admin' || pathname === '/admin/login' || pathname.startsWith('/admin/')
   const isSubpage = isRegistration || isAdmin
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
@@ -870,52 +870,52 @@ function App() {
       {/* =================================================================
           FOOTER
           ================================================================= */}
-      <footer className="site-footer">
-        <div className="container footer-container">
-          <div className="footer-grid">
-            <div className="footer-col footer-col-brand">
-              <div className="footer-brand-title">
-                KGRCET <span className="footer-brand-year">2027</span>
+      {!isAdmin && (
+        <footer className="site-footer">
+          <div className="container footer-container">
+            <div className="footer-grid">
+              <div className="footer-col footer-col-brand">
+                <div className="footer-brand-title">
+                  KGRCET <span className="footer-brand-year">2027</span>
+                </div>
+                <p className="footer-tagline">
+                  A 36-hour national level hackathon at KG Reddy College of Engineering &amp; Technology, Hyderabad.
+                </p>
               </div>
-              <p className="footer-tagline">
-                A 36-hour national level hackathon at KG Reddy College of Engineering &amp; Technology, Hyderabad.
+
+              <div className="footer-col footer-col-developers">
+                <h4 className="footer-col-header">DEVELOPED BY</h4>
+                <div className="footer-col-body">
+                  <p className="footer-developer-credit">
+                    Jashanth Gonipati (24QM1A05A3) <br /> Aluguri SaiVaibhav (24QM1A0514)
+                  </p>
+                </div>
+              </div>
+
+              <div className="footer-col footer-col-venue">
+                <h4 className="footer-col-header">CAMPUS VENUE</h4>
+                <div className="footer-col-body">
+                  <p className="footer-venue-name">{event.institution}</p>
+                  <p className="footer-venue-address">
+                    Chilkur Village, Moinabad, Hyderabad — 501504
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="footer-divider" />
+
+            <div className="footer-bottom">
+              <p className="footer-copyright">
+                © 2027 KGRCET · ALL RIGHTS RESERVED.
               </p>
-            </div>
-
-            <div className="footer-col footer-col-developers">
-              <h4 className="footer-col-header">DEVELOPED BY</h4>
-              <div className="footer-col-body">
-                <p className="footer-developer-credit">
-                  Jashanth Gonipati (24QM1A05A3) <br /> Aluguri SaiVaibhav (24QM1A0514)
-                </p>
-              </div>
-            </div>
-
-            <div className="footer-col footer-col-venue">
-              <h4 className="footer-col-header">CAMPUS VENUE</h4>
-              <div className="footer-col-body">
-                <p className="footer-venue-name">{event.institution}</p>
-                <p className="footer-venue-address">
-                  Chilkur Village, Moinabad, Hyderabad — 501504
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="footer-divider" />
-
-          <div className="footer-bottom">
-            <p className="footer-copyright">
-              © 2027 KGRCET · ALL RIGHTS RESERVED.
-            </p>
-            {!isAdmin && (
               <a href="/admin/login" className="footer-admin-link">
                 ADMIN LOGIN ✦
               </a>
-            )}
+            </div>
           </div>
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
     </MotionConfig>
   )
