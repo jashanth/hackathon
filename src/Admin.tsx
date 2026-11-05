@@ -111,7 +111,6 @@ function Login({ onLogin, notice }: { onLogin: (session: Session) => void; notic
       <p className="admin-login-lede">Only for KGRCET Hackathon organizers.</p>
       <div className="admin-security">
         <span><ShieldCheck size={13} /> Constant-Time Auth</span>
-        <span><Sparkles size={13} /> SHA-256 Hashing</span>
       </div>
 
       {notice && !error && <p className="admin-notice" role="status">{notice}</p>}
@@ -136,7 +135,7 @@ function Login({ onLogin, notice }: { onLogin: (session: Session) => void; notic
             autoComplete="username"
             autoCapitalize="none"
             spellCheck="false"
-            placeholder="e.g. jashanth or admin@ikarus.kgrcet.ac.in"
+            placeholder="e.g. jashanth or organizer email"
             value={identifier}
             onChange={(changeEvent) => setIdentifier(changeEvent.target.value)}
           />

@@ -6,11 +6,23 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
-import { createApp, ADMIN_ACCOUNTS } from './server.mjs'
+import { createApp, hashPassword, ALLOWED_ADMINS } from './server.mjs'
+import { validatePasswordStrength } from './hash-admin-password.mjs'
 
 const approved = { SUBMISSION_ENABLED: 'true', REGISTRATION_MIN_TEAM_SIZE: '2', REGISTRATION_MAX_TEAM_SIZE: '4' }
 const blank = () => ({ teamName: '', teamSize: '', college: '', leadName: '', email: '', phone: '', members: [] })
 const complete = () => ({ teamName: 'A', teamSize: '2', college: 'C', leadName: 'L', email: 'lead@example.com', phone: '+919876543210', members: [{ name: 'M', email: 'member@example.com', college: 'C' }] })
+
+const randomPassword = () => `${randomBytes(16).toString('hex')}Aa1!`
+const testAdminPassword = randomPassword()
+const testAdminEmail = 'saivaibhavaluguri@gmail.com'
+const testAdminSecondaryPassword = randomPassword()
+const testJashanthPassword = randomPassword()
+
+const makeTestAccounts = (pw1 = testAdminPassword, pw2 = testJashanthPassword) => [
+  { email: 'saivaibhavaluguri@gmail.com', name: 'Aluguri SaiVaibhav', passwordHash: hashPassword(pw1) },
+  { email: 'jashanthgonipati@gmail.com', username: 'jashanth', name: 'Jashanth Gonipati', passwordHash: hashPassword(pw2) },
+]
 
 async function fixture(t, rules = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'registration-'))
@@ -20,12 +32,12 @@ async function fixture(t, rules = {}) {
   async function start() {
     const previous = {}
     try {
-      for (const key of [...Object.keys(approved), 'NODE_ENV']) {
+      for (const key of [...Object.keys(approved), 'NODE_ENV', 'PUBLIC_ORIGIN', 'TRUST_PROXY', 'ADMIN_ACCOUNTS_JSON']) {
         previous[key] = process.env[key]
         if (rules[key] === undefined) delete process.env[key]
         else process.env[key] = rules[key]
       }
-      app = createApp({ dbPath: join(dir, 'test.sqlite') })
+      app = createApp({ dbPath: join(dir, 'test.sqlite'), adminAccounts: makeTestAccounts() })
     } finally {
       for (const [key, value] of Object.entries(previous)) {
         if (value === undefined) delete process.env[key]
@@ -174,22 +186,35 @@ test('approved teams larger than twenty members can save and submit', async (t) 
   assert.equal((await f.submit(1, cookie)).status, 200)
 })
 
-const defaultAdminEmail = 'saivaibhavaluguri@gmail.com'
-const defaultAdminPassword = '123'
-
-async function adminFixture(t, adminAccounts = ADMIN_ACCOUNTS, env = {}) {
+async function adminFixture(t, adminAccounts = makeTestAccounts(), env = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'admin-'))
   const dbPath = join(dir, 'test.sqlite')
-  const previous = {}
-  for (const [key, value] of Object.entries(env)) { previous[key] = process.env[key]; process.env[key] = value }
-  const app = createApp({ dbPath, adminAccounts })
-  for (const [key, value] of Object.entries(previous)) {
-    if (value === undefined) delete process.env[key]
-    else process.env[key] = value
+  let app, base
+  const keysToTrack = ['NODE_ENV', 'PUBLIC_ORIGIN', 'TRUST_PROXY', 'ADMIN_ACCOUNTS_JSON', ...Object.keys(env)]
+  const previousEnv = {}
+  for (const key of keysToTrack) {
+    previousEnv[key] = process.env[key]
+    if (env[key] === undefined) delete process.env[key]
+    else process.env[key] = env[key]
   }
-  await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve))
-  const base = `http://127.0.0.1:${app.address().port}`
-  t.after(async () => { await new Promise((resolve) => app.close(resolve)); await rm(dir, { recursive: true, force: true }) })
+  const close = async () => { if (app?.listening) await new Promise((resolve) => app.close(resolve)) }
+  t.after(async () => {
+    await close()
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  async function start(accounts = adminAccounts) {
+    app = createApp({ dbPath, adminAccounts: accounts })
+    await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve))
+    base = `http://127.0.0.1:${app.address().port}`
+  }
+
+  await start()
+
   const call = async (method, path, payload, cookie, headers = {}) => {
     const response = await fetch(base + path, {
       method,
@@ -198,77 +223,129 @@ async function adminFixture(t, adminAccounts = ADMIN_ACCOUNTS, env = {}) {
     })
     const text = await response.text()
     let body = text
-    try { body = JSON.parse(text) } catch { /* Static files are not JSON. */ }
+    try { body = JSON.parse(text) } catch {}
     return { status: response.status, body, cookie: response.headers.get('set-cookie'), headers: response.headers }
   }
-  const login = async () => (await call('POST', '/api/admin/login', { email: defaultAdminEmail, password: defaultAdminPassword })).cookie.split(';')[0]
-  return { call, login, base }
+
+  const login = async (email = testAdminEmail, password = testAdminPassword) => {
+    const res = await call('POST', '/api/admin/login', { email, password })
+    return res.cookie ? res.cookie.split(';')[0] : null
+  }
+
+  return { call, login, base, dbPath, restart: async (newAccounts) => { await close(); await start(newAccounts) } }
 }
 
 test('admin login sets a hardened session cookie and logout ends it', async (t) => {
   const f = await adminFixture(t)
   assert.deepEqual((await f.call('GET', '/api/admin/session')).body, { session: null })
-  const signedIn = await f.call('POST', '/api/admin/login', { email: ' SAIVAIBHAVALUGURI@GMAIL.COM ', password: defaultAdminPassword })
+
+  const signedIn = await f.call('POST', '/api/admin/login', { email: ' SAIVAIBHAVALUGURI@GMAIL.COM ', password: testAdminPassword })
   assert.equal(signedIn.status, 200)
   assert.deepEqual(signedIn.body.session, { email: 'saivaibhavaluguri@gmail.com', name: 'Aluguri SaiVaibhav' })
+  assert.match(signedIn.cookie, /^__Host-admin=/)
   assert.match(signedIn.cookie, /HttpOnly/)
   assert.match(signedIn.cookie, /SameSite=Strict/)
+  assert.match(signedIn.cookie, /Path=\//)
   assert.match(signedIn.cookie, /Max-Age=14400/)
+
   const cookie = signedIn.cookie.split(';')[0]
   assert.equal((await f.call('GET', '/api/admin/session', undefined, cookie)).body.session.name, 'Aluguri SaiVaibhav')
   assert.equal((await f.call('POST', '/api/admin/logout', {}, cookie)).status, 200)
   assert.deepEqual((await f.call('GET', '/api/admin/session', undefined, cookie)).body, { session: null })
   assert.equal((await f.call('GET', '/api/admin/registrations', undefined, cookie)).status, 401)
 
-  // Verify secondary password for saivaibhavaluguri@gmail.com
-  const saivaibhav2 = await f.call('POST', '/api/admin/login', { email: 'saivaibhavaluguri@gmail.com', password: '123456789012' })
-  assert.equal(saivaibhav2.status, 200)
+  // Verify login by username
+  const jashanthByUsername = await f.call('POST', '/api/admin/login', { identifier: 'jashanth', password: testJashanthPassword })
+  assert.equal(jashanthByUsername.status, 200)
+  assert.deepEqual(jashanthByUsername.body.session, { email: 'jashanthgonipati@gmail.com', name: 'Jashanth Gonipati' })
 
-  // Verify both passwords for jashanthgonipati@gmail.com
-  const jashanth1 = await f.call('POST', '/api/admin/login', { email: 'jashanthgonipati@gmail.com', password: '123' })
-  assert.equal(jashanth1.status, 200)
-  assert.deepEqual(jashanth1.body.session, { email: 'jashanthgonipati@gmail.com', name: 'Jashanth Gonipati' })
-
-  const jashanth2 = await f.call('POST', '/api/admin/login', { email: 'jashanthgonipati@gmail.com', password: 'jashanth@123' })
-  assert.equal(jashanth2.status, 200)
+  // Verify login by email
+  const jashanthByEmail = await f.call('POST', '/api/admin/login', { identifier: 'jashanthgonipati@gmail.com', password: testJashanthPassword })
+  assert.equal(jashanthByEmail.status, 200)
 })
 
 test('admin endpoints reject anonymous, forged, and cross-origin requests', async (t) => {
   const f = await adminFixture(t)
   assert.equal((await f.call('GET', '/api/admin/registrations')).status, 401)
   assert.equal((await f.call('POST', '/api/admin/registrations', { data: complete() })).status, 401)
-  assert.equal((await f.call('GET', '/api/admin/registrations', undefined, 'kgrcet_admin=forged')).status, 401)
+  assert.equal((await f.call('GET', '/api/admin/registrations', undefined, '__Host-admin=forged')).status, 401)
   assert.equal((await f.call('PUT', '/api/admin/registrations/REG-0000000000000000/status', { status: 'valid' })).status, 401)
+
   const cookie = await f.login()
   assert.equal((await f.call('POST', '/api/admin/registrations', { data: complete() }, cookie, { Origin: 'https://attacker.example' })).status, 403)
-  assert.equal((await f.call('POST', '/api/admin/login', { email: defaultAdminEmail, password: defaultAdminPassword }, undefined, { Origin: 'https://attacker.example' })).status, 403)
+  assert.equal((await f.call('POST', '/api/admin/login', { email: testAdminEmail, password: testAdminPassword }, undefined, { Origin: 'https://attacker.example' })).status, 403)
 })
 
-test('repeated failed logins lock that email, and unknown emails get the same answer', async (t) => {
+test('repeated failed logins lock that target in SQLite, and unknown emails get the exact same answer', async (t) => {
   const f = await adminFixture(t)
-  const wrong = await f.call('POST', '/api/admin/login', { email: defaultAdminEmail, password: 'wrong' })
-  const unknown = await f.call('POST', '/api/admin/login', { email: 'nobody@example.edu', password: 'wrong' })
+  const wrong = await f.call('POST', '/api/admin/login', { email: testAdminEmail, password: 'wrong-password-candidate' })
+  const unknown = await f.call('POST', '/api/admin/login', { email: 'nobody@example.edu', password: 'wrong-password-candidate' })
   assert.equal(wrong.status, 401)
-  assert.deepEqual(unknown.body, wrong.body)
-  for (let attempt = 0; attempt < 3; attempt++) assert.equal((await f.call('POST', '/api/admin/login', { email: defaultAdminEmail, password: 'wrong' })).status, 401)
-  const locked = await f.call('POST', '/api/admin/login', { email: defaultAdminEmail, password: 'wrong' })
-  assert.equal(locked.status, 429)
-  assert.equal(locked.body.locked, true)
-  assert.equal(locked.body.remainingLockoutSeconds, 60)
-  const correctWhileLocked = await f.call('POST', '/api/admin/login', { email: defaultAdminEmail, password: defaultAdminPassword })
-  assert.equal(correctWhileLocked.status, 429)
+  assert.equal(unknown.status, 401)
+  assert.deepEqual(wrong.body, { error: 'Invalid credentials' })
+  assert.deepEqual(unknown.body, { error: 'Invalid credentials' })
+
+  // 3 more failed attempts (total 4)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await f.call('POST', '/api/admin/login', { email: testAdminEmail, password: 'wrong-password-candidate' })
+    assert.equal(res.status, 401)
+    assert.deepEqual(res.body, { error: 'Invalid credentials' })
+  }
+
+  // 5th failed attempt triggers lockout
+  const fifth = await f.call('POST', '/api/admin/login', { email: testAdminEmail, password: 'wrong-password-candidate' })
+  assert.equal(fifth.status, 401)
+  assert.deepEqual(fifth.body, { error: 'Invalid credentials' })
+
+  // Locked attempt with correct credentials still returns generic 401
+  const correctWhileLocked = await f.call('POST', '/api/admin/login', { email: testAdminEmail, password: testAdminPassword })
+  assert.equal(correctWhileLocked.status, 401)
+  assert.deepEqual(correctWhileLocked.body, { error: 'Invalid credentials' })
   assert.equal(correctWhileLocked.cookie, null)
+
+  // Verify lockout persistence across server restart
+  await f.restart()
+  const afterRestart = await f.call('POST', '/api/admin/login', { email: testAdminEmail, password: testAdminPassword })
+  assert.equal(afterRestart.status, 401)
+  assert.deepEqual(afterRestart.body, { error: 'Invalid credentials' })
 })
 
 test('missing or invalid admin configuration fails closed', async (t) => {
   const none = await adminFixture(t, [])
   assert.equal((await none.call('POST', '/api/admin/login', { email: 'a@b.co', password: 'x' })).status, 503)
+
   const broken = await adminFixture(t, '{not json')
   assert.equal((await broken.call('POST', '/api/admin/login', { email: 'a@b.co', password: 'x' })).status, 503)
+
+  // In production, server refuses to start with missing, empty, or invalid hash configuration
+  const prevNodeEnv = process.env.NODE_ENV
+  const prevAdminJson = process.env.ADMIN_ACCOUNTS_JSON
+  try {
+    process.env.NODE_ENV = 'production'
+    delete process.env.ADMIN_ACCOUNTS_JSON
+    assert.throws(() => createApp(), /ADMIN_ACCOUNTS_JSON is required/)
+
+    process.env.ADMIN_ACCOUNTS_JSON = ''
+    assert.throws(() => createApp(), /ADMIN_ACCOUNTS_JSON is required/)
+
+    process.env.ADMIN_ACCOUNTS_JSON = '[]'
+    assert.throws(() => createApp(), /ADMIN_ACCOUNTS_JSON cannot be empty/)
+
+    process.env.ADMIN_ACCOUNTS_JSON = JSON.stringify([{ email: 'saivaibhavaluguri@gmail.com', name: 'Aluguri SaiVaibhav', passwordHash: 'plain-or-sha256' }])
+    assert.throws(() => createApp(), /Invalid password hash format/)
+
+    process.env.ADMIN_ACCOUNTS_JSON = JSON.stringify([{ email: 'unauthorized@example.com', name: 'Unknown', passwordHash: hashPassword(randomPassword()) }])
+    assert.throws(() => createApp(), /not in the allowed admin list/)
+  } finally {
+    if (prevNodeEnv === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = prevNodeEnv
+    if (prevAdminJson === undefined) delete process.env.ADMIN_ACCOUNTS_JSON
+    else process.env.ADMIN_ACCOUNTS_JSON = prevAdminJson
+  }
 })
 
 test('the console lists submitted teams only, and counts drafts without exposing them', async (t) => {
-  const f = await adminFixture(t, ADMIN_ACCOUNTS, approved)
+  const f = await adminFixture(t, makeTestAccounts(), approved)
   const cookie = await f.login()
   const blankDraft = (await f.call('GET', '/api/registration')).cookie.split(';')[0]
   await f.call('PUT', '/api/registration', { data: blank(), step: 0, revision: 0 }, blankDraft)
@@ -295,10 +372,9 @@ test('the console lists submitted teams only, and counts drafts without exposing
 
   const marked = await f.call('PUT', `/api/admin/registrations/${registration.receipt}/status`, { status: 'valid' }, cookie)
   assert.equal(marked.body.registration.reviewStatus, 'valid')
-  assert.equal(marked.body.registration.reviewedBy, defaultAdminEmail)
+  assert.equal(marked.body.registration.reviewedBy, testAdminEmail)
   assert.equal((await f.call('PUT', `/api/admin/registrations/${registration.receipt}/status`, { status: 'approved' }, cookie)).status, 400)
   assert.equal((await f.call('PUT', '/api/admin/registrations/REG-0000000000000000/status', { status: 'valid' }, cookie)).status, 404)
-  // Review fields stay out of the participant's own response.
   assert.deepEqual(Object.keys((await f.call('GET', '/api/registration', undefined, team)).body.draft).sort(), ['data', 'receipt', 'revision', 'status', 'step'])
 })
 
@@ -328,24 +404,15 @@ test('spot registration works while submissions are closed and edits are validat
 })
 
 test('removing an admin account ends its existing session', async (t) => {
-  const dir = await mkdtemp(join(tmpdir(), 'admin-'))
-  t.after(() => rm(dir, { recursive: true, force: true }))
-  const dbPath = join(dir, 'test.sqlite')
-  const start = async (adminAccounts) => {
-    const app = createApp({ dbPath, adminAccounts })
-    await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve))
-    return { app, base: `http://127.0.0.1:${app.address().port}` }
-  }
-  const first = await start(ADMIN_ACCOUNTS)
-  const signedIn = await fetch(`${first.base}/api/admin/login`, { method: 'POST', headers: { Origin: first.base, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: defaultAdminEmail, password: defaultAdminPassword }) })
-  const cookie = signedIn.headers.get('set-cookie').split(';')[0]
-  await new Promise((resolve) => first.app.close(resolve))
-  const kept = await start(ADMIN_ACCOUNTS)
-  assert.equal((await fetch(`${kept.base}/api/admin/registrations`, { headers: { Cookie: cookie } })).status, 200)
-  await new Promise((resolve) => kept.app.close(resolve))
-  const removed = await start([{ email: 'other@example.edu', name: 'Other', passwords: ['password123'] }])
-  assert.equal((await fetch(`${removed.base}/api/admin/registrations`, { headers: { Cookie: cookie } })).status, 401)
-  await new Promise((resolve) => removed.app.close(resolve))
+  const accountsAll = makeTestAccounts()
+  const f = await adminFixture(t, accountsAll)
+  const cookie = await f.login()
+  assert.equal((await f.call('GET', '/api/admin/registrations', undefined, cookie)).status, 200)
+
+  // Restart with only Jashanth's account
+  const accountsOnlyJashanth = accountsAll.filter((a) => a.email !== testAdminEmail)
+  await f.restart(accountsOnlyJashanth)
+  assert.equal((await f.call('GET', '/api/admin/registrations', undefined, cookie)).status, 401)
 })
 
 test('a database from before the console keeps its submitted registrations', async (t) => {
@@ -359,10 +426,10 @@ test('a database from before the console keeps its submitted registrations', asy
   old.prepare("INSERT INTO drafts VALUES ('hash', ?, 2, 'submitted', 'REG-AAAAAAAAAAAAAAAA', 3)").run(JSON.stringify(complete()))
   old.close()
   for (let run = 0; run < 2; run++) {
-    const app = createApp({ dbPath, adminAccounts: ADMIN_ACCOUNTS })
+    const app = createApp({ dbPath, adminAccounts: makeTestAccounts() })
     await new Promise((resolve) => app.listen(0, '127.0.0.1', resolve))
     const base = `http://127.0.0.1:${app.address().port}`
-    const signedIn = await fetch(`${base}/api/admin/login`, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: defaultAdminEmail, password: defaultAdminPassword }) })
+    const signedIn = await fetch(`${base}/api/admin/login`, { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: testAdminEmail, password: testAdminPassword }) })
     const listed = await (await fetch(`${base}/api/admin/registrations`, { headers: { Cookie: signedIn.headers.get('set-cookie').split(';')[0] } })).json()
     assert.equal(listed.registrations[0].receipt, 'REG-AAAAAAAAAAAAAAAA')
     assert.equal(listed.registrations[0].reviewStatus, 'pending')
@@ -373,11 +440,211 @@ test('a database from before the console keeps its submitted registrations', asy
 
 test('local dev origins are accepted only outside production', async (t) => {
   const dev = await adminFixture(t)
-  assert.equal((await dev.call('POST', '/api/admin/login', { email: defaultAdminEmail, password: defaultAdminPassword }, undefined, { Origin: 'http://localhost:5173' })).status, 200)
+  assert.equal((await dev.call('POST', '/api/admin/login', { email: testAdminEmail, password: testAdminPassword }, undefined, { Origin: 'http://localhost:5173' })).status, 200)
   assert.equal((await dev.call('POST', '/api/admin/logout', {}, undefined, { Origin: 'https://localhost:5173' })).status, 403)
   assert.equal((await dev.call('POST', '/api/admin/logout', {}, undefined, { Origin: 'http://localhost.attacker.example' })).status, 403)
-  const production = await adminFixture(t, ADMIN_ACCOUNTS, { NODE_ENV: 'production' })
-  assert.equal((await production.call('POST', '/api/admin/logout', {}, undefined, { Origin: 'http://localhost:5173' })).status, 403)
+})
+
+test('origin check enforces PUBLIC_ORIGIN and handles proxy headers when trusted', async (t) => {
+  const prodOrigin = 'https://hackathon.cybersec-kgrcet.com'
+  const f = await adminFixture(t, makeTestAccounts(), {
+    NODE_ENV: 'production',
+    PUBLIC_ORIGIN: prodOrigin,
+  })
+
+  // Matching PUBLIC_ORIGIN succeeds
+  const ok = await f.call('POST', '/api/admin/login', { email: testAdminEmail, password: testAdminPassword }, undefined, { Origin: prodOrigin })
+  assert.equal(ok.status, 200)
+
+  // Foreign origin is denied with 403
+  const foreign = await f.call('POST', '/api/admin/login', { email: testAdminEmail, password: testAdminPassword }, undefined, { Origin: 'https://attacker.example' })
+  assert.equal(foreign.status, 403)
+
+  // Referer matching PUBLIC_ORIGIN without Origin header succeeds
+  const refererOk = await fetch(`${f.base}/api/admin/login`, {
+    method: 'POST',
+    headers: { Referer: `${prodOrigin}/admin/login`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: testAdminEmail, password: testAdminPassword }),
+  })
+  assert.equal(refererOk.status, 200)
+
+  // Referer from foreign origin is denied
+  const refererBad = await fetch(`${f.base}/api/admin/login`, {
+    method: 'POST',
+    headers: { Referer: 'https://attacker.example/phish', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: testAdminEmail, password: testAdminPassword }),
+  })
+  assert.equal(refererBad.status, 403)
+
+  // When TRUST_PROXY=true without PUBLIC_ORIGIN, X-Forwarded-Proto and X-Forwarded-Host are accepted
+  const proxyApp = await adminFixture(t, makeTestAccounts(), {
+    TRUST_PROXY: 'true',
+  })
+  const proxyOk = await proxyApp.call('POST', '/api/admin/login', { email: testAdminEmail, password: testAdminPassword }, undefined, {
+    'X-Forwarded-Proto': 'https',
+    'X-Forwarded-Host': 'proxy.example.com',
+    Origin: 'https://proxy.example.com',
+  })
+  assert.equal(proxyOk.status, 200)
+
+  // When TRUST_PROXY is false, proxy headers are ignored
+  const noTrustApp = await adminFixture(t, makeTestAccounts(), {
+    TRUST_PROXY: 'false',
+  })
+  const noTrustRes = await noTrustApp.call('POST', '/api/admin/login', { email: testAdminEmail, password: testAdminPassword }, undefined, {
+    'X-Forwarded-Proto': 'https',
+    'X-Forwarded-Host': 'proxy.example.com',
+    Origin: 'https://proxy.example.com',
+  })
+  assert.equal(noTrustRes.status, 403)
+})
+
+test('client IP uses last X-Forwarded-For address only when TRUST_PROXY=true', async (t) => {
+  const f = await adminFixture(t, makeTestAccounts(), { TRUST_PROXY: 'true' })
+  // Send 5 failures with spoofed first IP and real proxy appended last IP
+  for (let i = 0; i < 5; i++) {
+    await f.call('POST', '/api/admin/login', { email: testAdminEmail, password: 'wrong' }, undefined, {
+      'X-Forwarded-For': '1.1.1.1, 203.0.113.50',
+    })
+  }
+
+  // Check audit log: failed event IP should be 203.0.113.50, not 1.1.1.1
+  const cookie = await f.login('jashanth', testJashanthPassword)
+  const audit = await f.call('GET', '/api/admin/audit-log', undefined, cookie)
+  assert.equal(audit.status, 200)
+  const failedEvent = audit.body.events.find((e) => e.result === 'fail')
+  assert.equal(failedEvent.ip, '203.0.113.50')
+})
+
+test('non-JSON and oversized login bodies are rejected', async (t) => {
+  const f = await adminFixture(t)
+  // Non-JSON content type
+  const badType = await fetch(`${f.base}/api/admin/login`, {
+    method: 'POST',
+    headers: { Origin: f.base, 'Content-Type': 'text/plain' },
+    body: 'email=test&password=pass',
+  })
+  assert.equal(badType.status, 400)
+
+  // Oversized body (> 4 KB)
+  const bigPadding = 'a'.repeat(5000)
+  const oversized = await fetch(`${f.base}/api/admin/login`, {
+    method: 'POST',
+    headers: { Origin: f.base, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: testAdminEmail, password: testAdminPassword, padding: bigPadding }),
+  })
+  assert.equal(oversized.status, 413)
+})
+
+test('idle expiry (30m) and absolute expiry (4h) invalidate sessions', async (t) => {
+  const f = await adminFixture(t)
+  const cookie = await f.login()
+  assert.ok(cookie)
+
+  // Verify session works initially
+  assert.equal((await f.call('GET', '/api/admin/registrations', undefined, cookie)).status, 200)
+
+  // Simulate idle expiry by winding idle_expires_at back in SQLite
+  const db = new DatabaseSync(f.dbPath)
+  db.prepare('UPDATE admin_sessions SET idle_expires_at = ?').run(Date.now() - 1000)
+  db.close()
+
+  // Next call should be denied (401)
+  assert.equal((await f.call('GET', '/api/admin/registrations', undefined, cookie)).status, 401)
+
+  // Login again, then simulate absolute expiry
+  const cookie2 = await f.login()
+  const db2 = new DatabaseSync(f.dbPath)
+  db2.prepare('UPDATE admin_sessions SET absolute_expires_at = ?').run(Date.now() - 1000)
+  db2.close()
+
+  assert.equal((await f.call('GET', '/api/admin/registrations', undefined, cookie2)).status, 401)
+})
+
+test('logout-all invalidates all sessions for an account', async (t) => {
+  const f = await adminFixture(t)
+  const cookie1 = await f.login()
+  const cookie2 = await f.login()
+
+  assert.equal((await f.call('GET', '/api/admin/registrations', undefined, cookie1)).status, 200)
+  assert.equal((await f.call('GET', '/api/admin/registrations', undefined, cookie2)).status, 200)
+
+  // Call logout-all on session 1
+  const res = await f.call('POST', '/api/admin/logout-all', {}, cookie1)
+  assert.equal(res.status, 200)
+
+  // Both session 1 and session 2 are now invalidated
+  assert.equal((await f.call('GET', '/api/admin/registrations', undefined, cookie1)).status, 401)
+  assert.equal((await f.call('GET', '/api/admin/registrations', undefined, cookie2)).status, 401)
+})
+
+test('every /api/admin/* route denies by default without a valid session', async (t) => {
+  const f = await adminFixture(t)
+  const unauthenticatedRoutes = [
+    ['GET', '/api/admin/registrations'],
+    ['POST', '/api/admin/registrations', { data: complete() }],
+    ['PUT', '/api/admin/registrations/REG-1234567890ABCDEF', { data: complete() }],
+    ['PUT', '/api/admin/registrations/REG-1234567890ABCDEF/status', { status: 'valid' }],
+    ['POST', '/api/admin/logout', {}],
+    ['POST', '/api/admin/logout-all', {}],
+    ['GET', '/api/admin/audit-log'],
+    ['GET', '/api/admin/non-existent-route'],
+    ['POST', '/api/admin/non-existent-route', {}],
+  ]
+
+  for (const [method, path, payload] of unauthenticatedRoutes) {
+    const res = await f.call(method, path, payload)
+    assert.equal(res.status, 401, `Expected 401 for unauthenticated ${method} ${path}`)
+  }
+})
+
+test('audit log records events and refuses to leak passwords or hashes', async (t) => {
+  const f = await adminFixture(t)
+  // 1 failed attempt
+  await f.call('POST', '/api/admin/login', { email: testAdminEmail, password: 'secret-guess-attempt' })
+  // 1 success attempt
+  const cookie = await f.login()
+
+  const res = await f.call('GET', '/api/admin/audit-log', undefined, cookie)
+  assert.equal(res.status, 200)
+  assert.ok(Array.isArray(res.body.events))
+  assert.ok(res.body.events.length >= 2)
+
+  const jsonStr = JSON.stringify(res.body.events)
+  assert.doesNotMatch(jsonStr, /secret-guess-attempt/)
+  assert.doesNotMatch(jsonStr, /scrypt\$/)
+  assert.doesNotMatch(jsonStr, /passwordHash/)
+
+  const [latest, prior] = res.body.events
+  assert.equal(latest.result, 'success')
+  assert.equal(prior.result, 'fail')
+})
+
+test('all responses carry required security headers and admin endpoints carry no-store', async (t) => {
+  const f = await adminFixture(t, makeTestAccounts(), {
+    TRUST_PROXY: 'true',
+  })
+  const res = await f.call('GET', '/api/admin/session', undefined, undefined, {
+    'X-Forwarded-Proto': 'https',
+  })
+
+  assert.equal(res.headers.get('x-content-type-options'), 'nosniff')
+  assert.equal(res.headers.get('x-frame-options'), 'DENY')
+  assert.equal(res.headers.get('referrer-policy'), 'same-origin')
+  assert.match(res.headers.get('content-security-policy'), /default-src 'self'/)
+  assert.match(res.headers.get('content-security-policy'), /frame-ancestors 'none'/)
+  assert.match(res.headers.get('content-security-policy'), /object-src 'none'/)
+  assert.match(res.headers.get('content-security-policy'), /base-uri 'self'/)
+  assert.equal(res.headers.get('cache-control'), 'no-store')
+  assert.match(res.headers.get('strict-transport-security'), /max-age=/)
+})
+
+test('password strength validation enforces 12+ chars, no names/emails, and rejects common passwords', () => {
+  assert.match(validatePasswordStrength('short'), /at least 12 characters/)
+  assert.match(validatePasswordStrength('saivaibhav1234'), /fragment/)
+  assert.match(validatePasswordStrength('jashanth99999'), /fragment/)
+  assert.match(validatePasswordStrength('password1234'), /common passwords list/)
+  assert.equal(validatePasswordStrength('uncommon-safe-pass-phrase!42'), null)
 })
 
 test('production files are served with their real content types', async (t) => {

@@ -1,5 +1,5 @@
 import http from 'node:http'
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
 import { mkdirSync } from 'node:fs'
 import { extname, join, normalize, resolve } from 'node:path'
@@ -10,15 +10,150 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const port = Number(process.env.PORT || 3001)
 const databasePath = process.env.DATABASE_PATH || join(root, 'data', 'registration.sqlite')
 const maxBodyBytes = 64 * 1024
+const maxLoginBodyBytes = 4 * 1024
 const cookieName = 'registration_resume'
 const cookieTtlSeconds = 60 * 60 * 24 * 30
-const adminCookieName = 'kgrcet_admin'
-const adminSessionTtlSeconds = 60 * 60 * 4
+const adminCookieName = '__Host-admin'
+const adminAbsoluteSessionTtlSeconds = 60 * 60 * 4 // 4 hours
+const adminIdleSessionTtlSeconds = 60 * 30 // 30 minutes
 const reviewStatuses = ['pending', 'valid', 'invalid']
 const contentTypes = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon', '.webp': 'image/webp', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8',
+}
+
+export const ALLOWED_ADMINS = Object.freeze([
+  { email: 'saivaibhavaluguri@gmail.com', name: 'Aluguri SaiVaibhav' },
+  { email: 'jashanthgonipati@gmail.com', username: 'jashanth', name: 'Jashanth Gonipati' },
+])
+
+const SCRYPT_N = 32768
+const SCRYPT_R = 8
+const SCRYPT_P = 1
+const SCRYPT_KEYLEN = 64
+const SCRYPT_MAXMEM = 64 * 1024 * 1024
+
+export function hashPassword(password) {
+  const salt = randomBytes(16)
+  const hash = scryptSync(String(password), salt, SCRYPT_KEYLEN, {
+    N: SCRYPT_N,
+    r: SCRYPT_R,
+    p: SCRYPT_P,
+    maxmem: SCRYPT_MAXMEM,
+  })
+  return `scrypt$${salt.toString('hex')}$${hash.toString('hex')}`
+}
+
+export function isValidPasswordHash(hashStr) {
+  if (typeof hashStr !== 'string') return false
+  const parts = hashStr.split('$')
+  return parts.length === 3 && parts[0] === 'scrypt' && /^[0-9a-fA-F]{32}$/.test(parts[1]) && /^[0-9a-fA-F]{128}$/.test(parts[2])
+}
+
+const DUMMY_SALT = Buffer.alloc(16, 0x5a)
+const DUMMY_HASH = scryptSync('dummy_anti_timing_password', DUMMY_SALT, SCRYPT_KEYLEN, {
+  N: SCRYPT_N,
+  r: SCRYPT_R,
+  p: SCRYPT_P,
+  maxmem: SCRYPT_MAXMEM,
+})
+
+export function runDummyScrypt(password = '') {
+  const candidate = scryptSync(String(password || 'dummy'), DUMMY_SALT, SCRYPT_KEYLEN, {
+    N: SCRYPT_N,
+    r: SCRYPT_R,
+    p: SCRYPT_P,
+    maxmem: SCRYPT_MAXMEM,
+  })
+  timingSafeEqual(DUMMY_HASH, candidate)
+}
+
+export function verifyPassword(password, storedHash) {
+  if (!isValidPasswordHash(storedHash)) {
+    runDummyScrypt(password)
+    return false
+  }
+  const parts = storedHash.split('$')
+  const salt = Buffer.from(parts[1], 'hex')
+  const expected = Buffer.from(parts[2], 'hex')
+  const candidate = scryptSync(String(password), salt, SCRYPT_KEYLEN, {
+    N: SCRYPT_N,
+    r: SCRYPT_R,
+    p: SCRYPT_P,
+    maxmem: SCRYPT_MAXMEM,
+  })
+  if (expected.length !== candidate.length) {
+    runDummyScrypt(password)
+    return false
+  }
+  return timingSafeEqual(expected, candidate)
+}
+
+export function parseAdminAccounts(source, isProduction = false) {
+  let raw = source
+  if (typeof raw === 'string') {
+    if (!raw.trim()) {
+      if (isProduction) throw new Error('ADMIN_ACCOUNTS_JSON is required and cannot be empty in production')
+      return null
+    }
+    try {
+      raw = JSON.parse(raw)
+    } catch {
+      if (isProduction) throw new Error('ADMIN_ACCOUNTS_JSON is not valid JSON')
+      return null
+    }
+  }
+  if (!raw && isProduction) {
+    throw new Error('ADMIN_ACCOUNTS_JSON is missing in production')
+  }
+  if (!Array.isArray(raw)) {
+    if (isProduction) throw new Error('ADMIN_ACCOUNTS_JSON must be a JSON array')
+    return null
+  }
+  if (raw.length === 0) {
+    if (isProduction) throw new Error('ADMIN_ACCOUNTS_JSON cannot be empty in production')
+    return []
+  }
+
+  const parsed = []
+  for (const account of raw) {
+    if (!account || typeof account !== 'object') {
+      if (isProduction) throw new Error('Invalid account entry in ADMIN_ACCOUNTS_JSON')
+      continue
+    }
+    const email = typeof account.email === 'string' ? account.email.trim().toLowerCase() : ''
+    const hash = typeof account.passwordHash === 'string' ? account.passwordHash.trim() : ''
+
+    if (!email || !hash) {
+      if (isProduction) throw new Error('Account entry must have email and passwordHash')
+      continue
+    }
+
+    if (!isValidPasswordHash(hash)) {
+      if (isProduction) throw new Error(`Invalid password hash format for ${email}: expected scrypt$<salt-hex>$<hash-hex>`)
+      continue
+    }
+
+    const matched = ALLOWED_ADMINS.find((a) => a.email.toLowerCase() === email)
+    if (!matched) {
+      if (isProduction) throw new Error(`Account ${email} is not in the allowed admin list`)
+      continue
+    }
+
+    parsed.push({
+      email: matched.email,
+      username: matched.username,
+      name: typeof account.name === 'string' && account.name.trim() ? account.name.trim() : matched.name,
+      passwordHash: hash,
+    })
+  }
+
+  if (isProduction && parsed.length === 0) {
+    throw new Error('ADMIN_ACCOUNTS_JSON contains no valid allowed admin accounts in production')
+  }
+
+  return parsed
 }
 
 function rulesFromEnvironment() {
@@ -35,20 +170,142 @@ function rulesFromEnvironment() {
 
 const sha256 = (value) => createHash('sha256').update(String(value), 'utf8').digest('hex')
 function hashToken(token) { return createHash('sha256').update(token).digest('hex') }
+
 function json(res, status, value, extra = {}) {
   const body = JSON.stringify(value)
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...extra })
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...extra })
   res.end(body)
 }
+
 function error(res, status, message) { json(res, status, { error: message }) }
+
 function parseCookies(value = '') {
   return Object.fromEntries(value.split(';').map((part) => part.trim().split('=')) .filter(([key, value]) => key && value).map(([key, value]) => [key, decodeURIComponent(value)]))
 }
+
 function cookieHeader(token, secure) {
   return `${cookieName}=${encodeURIComponent(token)}; Max-Age=${cookieTtlSeconds}; Path=/; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`
 }
+
+function adminCookie(value, maxAge, secure) {
+  return `${adminCookieName}=${value}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`
+}
+
+function clientIp(req) {
+  if (process.env.TRUST_PROXY === 'true') {
+    const rawForwarded = req.headers['x-forwarded-for']
+    if (typeof rawForwarded === 'string' && rawForwarded.trim()) {
+      const parts = rawForwarded.split(',')
+      const last = parts[parts.length - 1].trim()
+      if (last) return last.replace(/^::ffff:/, '')
+    }
+  }
+  const remote = req.socket?.remoteAddress || 'unknown'
+  return remote.replace(/^::ffff:/, '')
+}
+
+function isSameOrigin(req, secure) {
+  const originHeader = req.headers.origin
+  let requestOrigin = ''
+
+  if (typeof originHeader === 'string' && originHeader.trim()) {
+    requestOrigin = originHeader.trim()
+  } else if (typeof req.headers.referer === 'string' && req.headers.referer.trim()) {
+    try {
+      requestOrigin = new URL(req.headers.referer).origin
+    } catch {
+      return false
+    }
+  }
+
+  if (!requestOrigin) return false
+
+  const publicOriginEnv = process.env.PUBLIC_ORIGIN ? process.env.PUBLIC_ORIGIN.trim() : null
+  let normalizedPublicOrigin = null
+  if (publicOriginEnv) {
+    try {
+      normalizedPublicOrigin = new URL(publicOriginEnv).origin
+    } catch {
+      normalizedPublicOrigin = publicOriginEnv.replace(/\/+$/, '')
+    }
+  }
+
+  if (normalizedPublicOrigin) {
+    if (requestOrigin === normalizedPublicOrigin) return true
+    if (!secure) {
+      try {
+        const u = new URL(requestOrigin)
+        if (u.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname)) {
+          return true
+        }
+      } catch {}
+    }
+    return false
+  }
+
+  let protocol = secure ? 'https' : 'http'
+  let host = req.headers.host || 'localhost'
+
+  if (process.env.TRUST_PROXY === 'true') {
+    if (req.headers['x-forwarded-proto']) {
+      protocol = String(req.headers['x-forwarded-proto']).split(',')[0].trim()
+    }
+    if (req.headers['x-forwarded-host']) {
+      host = String(req.headers['x-forwarded-host']).split(',')[0].trim()
+    }
+  }
+
+  const expectedOrigin = `${protocol}://${host}`
+  if (requestOrigin === expectedOrigin) return true
+
+  if (!secure) {
+    try {
+      const u = new URL(requestOrigin)
+      return u.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname)
+    } catch {
+      return false
+    }
+  }
+
+  return false
+}
+
+function applySecurityHeaders(req, res, pathname = '', secure = false) {
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('X-Frame-Options', 'DENY')
+  res.setHeader('Referrer-Policy', 'same-origin')
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self';"
+  )
+
+  if (pathname.startsWith('/api/admin/')) {
+    res.setHeader('Cache-Control', 'no-store')
+  }
+
+  const isHttps =
+    (process.env.TRUST_PROXY === 'true' && req.headers['x-forwarded-proto'] === 'https') ||
+    Boolean(req.socket?.encrypted)
+  if (isHttps) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+  }
+}
+
 function publicDraft(row) {
   return row && { data: JSON.parse(row.data), step: row.step, status: row.status, receipt: row.receipt, revision: row.revision }
+}
+
+function publicRegistration(row) {
+  return {
+    receipt: row.receipt,
+    revision: row.revision,
+    data: JSON.parse(row.data),
+    source: row.source,
+    reviewStatus: row.review_status,
+    reviewedBy: row.reviewed_by,
+    reviewedAt: row.reviewed_at,
+    submittedAt: row.submitted_at,
+  }
 }
 
 function validateDraftShape(data) {
@@ -85,198 +342,6 @@ function validateData(data, rules) {
   return null
 }
 
-export const ADMIN_ACCOUNTS = Object.freeze([
-  {
-    username: 'jashanth',
-    email: 'jashanth@ikarus.kgrcet.ac.in',
-    name: 'Jashanth',
-    role: 'council_admin',
-    clubId: 'all',
-    clubName: 'Central Council',
-    passwords: ['123', 'jashanth@123'],
-  },
-  {
-    email: 'admin@ikarus.kgrcet.ac.in',
-    name: 'Festival Central Council',
-    role: 'council_admin',
-    clubId: 'all',
-    clubName: 'Central Council (All Clubs)',
-    passwords: ['ikarus2026admin'],
-  },
-  {
-    email: 'dsa@ikarus.kgrcet.ac.in',
-    name: 'Dean Student Affairs (DSA)',
-    role: 'council_admin',
-    clubId: 'all',
-    clubName: 'Dean Student Affairs (DSA)',
-    passwords: ['dsa@ikarus2026'],
-  },
-  {
-    email: 'appweb@ikarus.kgrcet.ac.in',
-    name: 'App and Web Club Lead',
-    role: 'club_admin',
-    clubId: 'app-web',
-    clubName: 'App and Web Club',
-    passwords: ['appweb@ikarus2026'],
-  },
-  {
-    email: 'ai@ikarus.kgrcet.ac.in',
-    name: 'AI Club Coordinator',
-    role: 'club_admin',
-    clubId: 'ai',
-    clubName: 'AI Club',
-    passwords: ['ai@ikarus2026'],
-  },
-  {
-    email: 'cybersec@ikarus.kgrcet.ac.in',
-    name: 'Cyber Security Club Lead',
-    role: 'club_admin',
-    clubId: 'cybersecurity',
-    clubName: 'Cybersecurity and Ethical Hacking Club',
-    passwords: ['cybersec@ikarus2026'],
-  },
-  {
-    email: 'iot@ikarus.kgrcet.ac.in',
-    name: 'IoT Club Coordinator',
-    role: 'club_admin',
-    clubId: 'iot',
-    clubName: 'IoT Club',
-    passwords: ['iot@ikarus2026'],
-  },
-  {
-    email: 'gcc@ikarus.kgrcet.ac.in',
-    name: 'GCC Lead',
-    role: 'club_admin',
-    clubId: 'gcc',
-    clubName: 'GCC',
-    passwords: ['gcc@ikarus2026'],
-  },
-  {
-    email: 'sae@ikarus.kgrcet.ac.in',
-    name: 'SAE India Club Coordinator',
-    role: 'club_admin',
-    clubId: 'sae-india',
-    clubName: 'SAE India Club',
-    passwords: ['sae@ikarus2026'],
-  },
-  {
-    email: '3dprinting@ikarus.kgrcet.ac.in',
-    name: '3D Printing Club Lead',
-    role: 'club_admin',
-    clubId: '3d-printing',
-    clubName: '3D Printing Club',
-    passwords: ['3dprinting@ikarus2026'],
-  },
-  {
-    email: 'datascience@ikarus.kgrcet.ac.in',
-    name: 'Data Science Club Lead',
-    role: 'club_admin',
-    clubId: 'data-science',
-    clubName: 'Data Science Club',
-    passwords: ['datascience@ikarus2026'],
-  },
-  {
-    email: 'blockchain@ikarus.kgrcet.ac.in',
-    name: 'Blockchain Club Lead',
-    role: 'club_admin',
-    clubId: 'blockchain',
-    clubName: 'Blockchain Club',
-    passwords: ['blockchain@ikarus2026'],
-  },
-  {
-    username: 'saivaibhav',
-    email: 'saivaibhavaluguri@gmail.com',
-    name: 'Aluguri SaiVaibhav',
-    role: 'council_admin',
-    clubId: 'all',
-    clubName: 'Central Council',
-    passwords: ['123', '123456789012'],
-  },
-  {
-    username: 'jashanthgonipati',
-    email: 'jashanthgonipati@gmail.com',
-    name: 'Jashanth Gonipati',
-    role: 'council_admin',
-    clubId: 'all',
-    clubName: 'Central Council',
-    passwords: ['123', 'jashanth@123'],
-  },
-])
-
-function parseAdminAccounts(source) {
-  let accounts = source
-  if (typeof accounts === 'string') {
-    try { accounts = JSON.parse(accounts) } catch { return null }
-  }
-  if (!Array.isArray(accounts)) return null
-  const parsed = []
-  for (const account of accounts) {
-    if (!account || typeof account.email !== 'string' || typeof account.name !== 'string') continue
-    let passwordSha256 = []
-    if (Array.isArray(account.passwordSha256)) {
-      passwordSha256 = account.passwordSha256.map((h) => String(h).toLowerCase())
-    } else if (account.passwordSha256) {
-      passwordSha256 = [String(account.passwordSha256).toLowerCase()]
-    } else {
-      const rawPasswords = Array.isArray(account.passwords)
-        ? account.passwords
-        : (typeof account.password === 'string' ? [account.password] : [])
-      const alternates = Array.isArray(account.alternatePasswords) ? account.alternatePasswords : []
-      passwordSha256 = [...rawPasswords, ...alternates].map((p) =>
-        p.length === 64 && /^[0-9a-fA-F]+$/.test(p) ? p.toLowerCase() : sha256(p)
-      )
-    }
-    parsed.push({
-      email: account.email.trim(),
-      username: account.username ? account.username.trim() : undefined,
-      name: account.name.trim(),
-      passwordSha256,
-      role: account.role || 'council_admin',
-      clubId: account.clubId || 'all',
-      clubName: account.clubName,
-    })
-  }
-  return parsed
-}
-
-export function verifyAdmin(accounts, identifier, password) {
-  const id = String(identifier || '').trim().toLowerCase()
-  const candidate = Buffer.from(sha256(String(password || '')), 'hex')
-  let matched = null
-  for (const account of accounts) {
-    const idMatches = account.email?.toLowerCase() === id || (account.username && account.username.toLowerCase() === id)
-    for (const hash of account.passwordSha256) {
-      const stored = Buffer.from(hash, 'hex')
-      if (stored.length === candidate.length && timingSafeEqual(stored, candidate) && idMatches) matched = account
-    }
-  }
-  return matched
-}
-
-function adminCookie(value, maxAge, secure) {
-  return `${adminCookieName}=${value}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`
-}
-
-function clientIp(req) {
-  // A trusted proxy appends the real client address as the last entry.
-  const forwarded = process.env.TRUST_PROXY === 'true' ? String(req.headers['x-forwarded-for'] || '').split(',').at(-1).trim() : ''
-  return forwarded || req.socket.remoteAddress || 'unknown'
-}
-
-function publicRegistration(row) {
-  return {
-    receipt: row.receipt,
-    revision: row.revision,
-    data: JSON.parse(row.data),
-    source: row.source,
-    reviewStatus: row.review_status,
-    reviewedBy: row.reviewed_by,
-    reviewedAt: row.reviewed_at,
-    submittedAt: row.submitted_at,
-  }
-}
-
-// Admin input is rebuilt field by field, so only known values are stored and team size always matches the people listed.
 function cleanRegistration(data) {
   const text = (value) => value.trim()
   return {
@@ -291,13 +356,65 @@ function cleanRegistration(data) {
 }
 
 export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJson } = {}) {
-  const configuredAdminAccounts = adminAccounts ?? adminAccountsJson ?? ADMIN_ACCOUNTS
+  const secure = process.env.NODE_ENV === 'production'
+  const rawAdminConfig = adminAccounts ?? adminAccountsJson ?? process.env.ADMIN_ACCOUNTS_JSON
+
+  if (secure) {
+    if (!rawAdminConfig) {
+      throw new Error('ADMIN_ACCOUNTS_JSON is required in production')
+    }
+  }
+
+  // Validate admin accounts configuration on startup
+  const configuredAdminAccounts = parseAdminAccounts(rawAdminConfig, secure)
+
   mkdirSync(resolve(dbPath, '..'), { recursive: true })
   const db = new DatabaseSync(dbPath)
   db.exec(`PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;
     CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS drafts (token_hash TEXT PRIMARY KEY REFERENCES sessions(token_hash) ON DELETE CASCADE, data TEXT NOT NULL, step INTEGER NOT NULL, status TEXT NOT NULL, receipt TEXT, revision INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS admin_sessions (token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT NOT NULL, expires_at INTEGER NOT NULL);`)
+    CREATE TABLE IF NOT EXISTS admin_sessions (
+      token_hash TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      name TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      last_active_at INTEGER NOT NULL,
+      absolute_expires_at INTEGER NOT NULL,
+      idle_expires_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS admin_login_attempts (
+      target_key TEXT PRIMARY KEY,
+      failed_attempts INTEGER NOT NULL,
+      locked_until INTEGER NOT NULL,
+      lockout_count INTEGER NOT NULL DEFAULT 0,
+      window_start_at INTEGER NOT NULL,
+      last_failed_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS admin_audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp INTEGER NOT NULL,
+      ip TEXT NOT NULL,
+      email_attempted TEXT NOT NULL,
+      result TEXT NOT NULL,
+      user_agent TEXT NOT NULL
+    );
+  `)
+
+  // Migrate older admin_sessions table if missing last_active_at
+  const adminSessionCols = new Set(db.prepare('PRAGMA table_info(admin_sessions)').all().map((c) => c.name))
+  if (!adminSessionCols.has('last_active_at')) {
+    db.exec('DROP TABLE admin_sessions')
+    db.exec(`CREATE TABLE admin_sessions (
+      token_hash TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      name TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      last_active_at INTEGER NOT NULL,
+      absolute_expires_at INTEGER NOT NULL,
+      idle_expires_at INTEGER NOT NULL
+    )`)
+  }
+
   const draftColumns = new Set(db.prepare('PRAGMA table_info(drafts)').all().map((column) => column.name))
   for (const [name, definition] of [
     ['review_status', "TEXT NOT NULL DEFAULT 'pending'"],
@@ -308,8 +425,8 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
   ]) {
     if (!draftColumns.has(name)) db.exec(`ALTER TABLE drafts ADD COLUMN ${name} ${definition}`)
   }
+
   const rules = rulesFromEnvironment()
-  const secure = process.env.NODE_ENV === 'production'
 
   function sessionFor(req, res) {
     const token = parseCookies(req.headers.cookie)[cookieName]
@@ -333,73 +450,168 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
     return row?.token_hash || null
   }
 
-  function sameOrigin(req) {
-    const origin = req.headers.origin
-    if (!origin) return false
-    const host = req.headers.host
-    const protocol = secure ? 'https' : 'http'
-    if (origin === `${protocol}://${host}`) return true
-    // Outside production, also accept local origins so Vite's /api proxy works from its dev port.
-    if (secure) return false
-    try {
-      const { protocol: originProtocol, hostname } = new URL(origin)
-      return originProtocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(hostname)
-    } catch { return false }
+  function checkLockout(targetKey, now) {
+    const row = db.prepare('SELECT failed_attempts, locked_until, lockout_count FROM admin_login_attempts WHERE target_key = ?').get(targetKey)
+    if (!row) return { isLocked: false, remainingSeconds: 0 }
+    if (row.locked_until > now) {
+      return { isLocked: true, remainingSeconds: Math.ceil((row.locked_until - now) / 1000) }
+    }
+    return { isLocked: false, remainingSeconds: 0 }
   }
 
-  const loginAttempts = new Map()
-  const loginFailuresByIp = new Map()
+  function recordFailedAttempt(targetKey, now) {
+    const WINDOW_MS = 15 * 60 * 1000
+    const BASE_LOCKOUT_MS = 15 * 60 * 1000
+    const row = db.prepare('SELECT failed_attempts, locked_until, lockout_count, window_start_at FROM admin_login_attempts WHERE target_key = ?').get(targetKey)
+    if (!row) {
+      db.prepare('INSERT INTO admin_login_attempts VALUES (?, 1, 0, 0, ?, ?)').run(targetKey, now, now)
+      return { locked: false, remainingSeconds: 0 }
+    }
+    const inWindow = (now - row.window_start_at) < WINDOW_MS
+    let attempts = inWindow ? row.failed_attempts + 1 : 1
+    let windowStart = inWindow ? row.window_start_at : now
+    let lockoutCount = row.lockout_count
+    let lockedUntil = 0
+
+    if (attempts >= 5) {
+      lockoutCount += 1
+      const duration = BASE_LOCKOUT_MS * lockoutCount
+      lockedUntil = now + duration
+    }
+    db.prepare(`UPDATE admin_login_attempts 
+      SET failed_attempts = ?, locked_until = ?, lockout_count = ?, window_start_at = ?, last_failed_at = ? 
+      WHERE target_key = ?`
+    ).run(attempts, lockedUntil, lockoutCount, windowStart, now, targetKey)
+
+    const remainingSeconds = lockedUntil > now ? Math.ceil((lockedUntil - now) / 1000) : 0
+    return { locked: lockedUntil > now, remainingSeconds }
+  }
+
+  function clearLoginAttempts(targetKey) {
+    db.prepare('DELETE FROM admin_login_attempts WHERE target_key = ?').run(targetKey)
+  }
+
+  function recordAuditLog({ ip, email, result, userAgent }) {
+    db.prepare('INSERT INTO admin_audit_log (timestamp, ip, email_attempted, result, user_agent) VALUES (?, ?, ?, ?, ?)')
+      .run(Date.now(), ip, String(email || '').slice(0, 254), result, String(userAgent || '').slice(0, 500))
+  }
 
   const allRegistrations = () => db.prepare("SELECT receipt, revision, data, source, review_status, reviewed_by, reviewed_at, submitted_at FROM drafts WHERE status = 'submitted' ORDER BY submitted_at DESC").all()
 
   function currentAdmin(req) {
-    const token = parseCookies(req.headers.cookie)[adminCookieName]
+    const cookies = parseCookies(req.headers.cookie)
+    const token = cookies[adminCookieName] || cookies['kgrcet_admin']
     if (!token) return null
-    const row = db.prepare('SELECT email, name FROM admin_sessions WHERE token_hash = ? AND expires_at > ?').get(hashToken(token), Date.now())
+    const now = Date.now()
+    const tokenHash = hashToken(token)
+    const row = db.prepare('SELECT email, name, absolute_expires_at, idle_expires_at FROM admin_sessions WHERE token_hash = ?').get(tokenHash)
     if (!row) return null
-    // Removing an account from the configuration ends its sessions immediately.
-    const accounts = parseAdminAccounts(configuredAdminAccounts) || []
-    const account = accounts.some((candidate) => candidate.email.trim().toLowerCase() === row.email.trim().toLowerCase())
-    if (!account) {
-      db.prepare('DELETE FROM admin_sessions WHERE token_hash = ?').run(hashToken(token))
+
+    if (now >= row.absolute_expires_at || now >= row.idle_expires_at) {
+      db.prepare('DELETE FROM admin_sessions WHERE token_hash = ?').run(tokenHash)
       return null
     }
-    return row
+
+    const accounts = parseAdminAccounts(configuredAdminAccounts) || []
+    const account = accounts.find((candidate) => candidate.email.toLowerCase() === row.email.toLowerCase())
+    if (!account) {
+      db.prepare('DELETE FROM admin_sessions WHERE token_hash = ?').run(tokenHash)
+      return null
+    }
+
+    const newIdle = Math.min(row.absolute_expires_at, now + adminIdleSessionTtlSeconds * 1000)
+    db.prepare('UPDATE admin_sessions SET last_active_at = ?, idle_expires_at = ? WHERE token_hash = ?').run(now, newIdle, tokenHash)
+
+    return { email: row.email, name: row.name }
   }
 
   async function adminLogin(req, res) {
-    const input = await body(req)
+    let input
+    try {
+      input = await readJsonBody(req, maxLoginBodyBytes)
+    } catch (err) {
+      return error(res, err.statusCode || 400, err.message)
+    }
+
     const identifier = typeof input?.identifier === 'string' ? input.identifier : (typeof input?.email === 'string' ? input.email : '')
     const password = typeof input?.password === 'string' ? input.password : ''
-    if (!identifier || !password || identifier.length > 254 || password.length > 1024) return error(res, 400, 'invalid credentials')
+
+    if (!identifier || !password || identifier.length > 254 || password.length > 1024) {
+      return error(res, 400, 'invalid credentials')
+    }
+
     const accounts = parseAdminAccounts(configuredAdminAccounts)
-    if (!accounts) return error(res, 503, 'Admin account configuration is invalid.')
-    if (!accounts.length) return error(res, 503, 'Admin accounts are not configured on this server.')
+    if (!accounts || !accounts.length) {
+      return error(res, 503, 'Admin accounts are not configured on this server.')
+    }
+
     const now = Date.now()
     const ip = clientIp(req)
-    const attemptKey = `${ip}|${identifier.trim().toLowerCase()}`
-    const attempts = loginAttempts.get(attemptKey)
-    const ipFailures = loginFailuresByIp.get(ip)
-    if (ipFailures && ipFailures.resetAt > now && ipFailures.count >= 30) return error(res, 429, 'Too many failed login attempts from this network. Please try again later.')
-    if (attempts && attempts.lockedUntil > now) return json(res, 429, { error: 'Too many failed login attempts. Please wait before trying again.', locked: true, remainingLockoutSeconds: Math.ceil((attempts.lockedUntil - now) / 1000) })
-    const account = verifyAdmin(accounts, identifier, password)
-    if (!account) {
-      // Random emails must not grow these maps without limit.
-      if (loginAttempts.size > 10000) loginAttempts.clear()
-      if (loginFailuresByIp.size > 10000) loginFailuresByIp.clear()
-      const failedAttempts = (attempts?.failedAttempts || 0) + 1
-      const lockedUntil = failedAttempts >= 5 ? now + 60_000 : 0
-      loginAttempts.set(attemptKey, { failedAttempts, lockedUntil })
-      const active = ipFailures && ipFailures.resetAt > now
-      loginFailuresByIp.set(ip, { count: (active ? ipFailures.count : 0) + 1, resetAt: active ? ipFailures.resetAt : now + 15 * 60_000 })
-      if (lockedUntil) return json(res, 429, { error: 'Too many failed login attempts. Please wait before trying again.', locked: true, remainingLockoutSeconds: 60 })
-      return error(res, 401, 'Invalid email or password.')
+    const userAgent = req.headers['user-agent'] || ''
+    const normalizedIdentifier = identifier.trim().toLowerCase()
+
+    const ipKey = `ip:${ip}`
+    const matchedAccount = accounts.find((candidate) =>
+      candidate.email.toLowerCase() === normalizedIdentifier ||
+      (candidate.username && candidate.username.toLowerCase() === normalizedIdentifier)
+    )
+    const accountKey = `account:${matchedAccount ? matchedAccount.email.toLowerCase() : normalizedIdentifier}`
+
+    const ipLock = checkLockout(ipKey, now)
+    const accountLock = checkLockout(accountKey, now)
+    const isLocked = ipLock.isLocked || accountLock.isLocked
+
+    if (isLocked) {
+      runDummyScrypt(password)
+      recordAuditLog({ ip, email: normalizedIdentifier, result: 'locked', userAgent })
+      return error(res, 401, 'Invalid credentials')
     }
-    loginAttempts.delete(attemptKey)
-    db.prepare('DELETE FROM admin_sessions WHERE expires_at <= ?').run(now)
+
+    if (!matchedAccount) {
+      runDummyScrypt(password)
+      recordFailedAttempt(ipKey, now)
+      recordFailedAttempt(accountKey, now)
+      recordAuditLog({ ip, email: normalizedIdentifier, result: 'fail', userAgent })
+      return error(res, 401, 'Invalid credentials')
+    }
+
+    const passwordMatches = verifyPassword(password, matchedAccount.passwordHash)
+    if (!passwordMatches) {
+      recordFailedAttempt(ipKey, now)
+      recordFailedAttempt(accountKey, now)
+      recordAuditLog({ ip, email: normalizedIdentifier, result: 'fail', userAgent })
+      return error(res, 401, 'Invalid credentials')
+    }
+
+    // Successful login: clear lockout counters, log success, issue fresh session
+    clearLoginAttempts(ipKey)
+    clearLoginAttempts(accountKey)
+    recordAuditLog({ ip, email: matchedAccount.email, result: 'success', userAgent })
+
+    // Clean expired sessions
+    db.prepare('DELETE FROM admin_sessions WHERE absolute_expires_at <= ? OR idle_expires_at <= ?').run(now, now)
+
+    // Remove any pre-existing session token from this client's cookie
+    const oldCookies = parseCookies(req.headers.cookie)
+    const oldToken = oldCookies[adminCookieName] || oldCookies['kgrcet_admin']
+    if (oldToken) {
+      db.prepare('DELETE FROM admin_sessions WHERE token_hash = ?').run(hashToken(oldToken))
+    }
+
     const token = randomBytes(32).toString('hex')
-    db.prepare('INSERT INTO admin_sessions VALUES (?, ?, ?, ?)').run(hashToken(token), account.email, account.name, now + adminSessionTtlSeconds * 1000)
-    return json(res, 200, { session: { email: account.email, name: account.name } }, { 'Set-Cookie': adminCookie(token, adminSessionTtlSeconds, secure) })
+    const tokenHash = hashToken(token)
+    const absExpiry = now + adminAbsoluteSessionTtlSeconds * 1000
+    const idleExpiry = now + adminIdleSessionTtlSeconds * 1000
+
+    db.prepare('INSERT INTO admin_sessions VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(tokenHash, matchedAccount.email, matchedAccount.name, now, now, absExpiry, idleExpiry)
+
+    return json(
+      res,
+      200,
+      { session: { email: matchedAccount.email, name: matchedAccount.name } },
+      { 'Set-Cookie': adminCookie(token, adminAbsoluteSessionTtlSeconds, secure) }
+    )
   }
 
   function registrationProblem(data, receipt) {
@@ -414,29 +626,61 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
   }
 
   async function adminApi(req, res, url) {
-    if (url.pathname === '/api/admin/login' && req.method === 'POST') return adminLogin(req, res)
+    // 1. Origin verification for state-changing routes
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) && !isSameOrigin(req, secure)) {
+      return error(res, 403, 'same-origin request required')
+    }
+
+    // 2. Public login endpoint
+    if (url.pathname === '/api/admin/login') {
+      if (req.method !== 'POST') return error(res, 405, 'method not allowed')
+      return adminLogin(req, res)
+    }
+
+    // 3. Admin session check endpoint
+    if (url.pathname === '/api/admin/session' && req.method === 'GET') {
+      const admin = currentAdmin(req)
+      return json(res, 200, { session: admin ? { email: admin.email, name: admin.name } : null })
+    }
+
+    // 4. DENY BY DEFAULT: Every other /api/admin/* route denies without a valid session
+    const admin = currentAdmin(req)
+    if (!admin) return error(res, 401, 'admin session required')
+
+    // 5. Logout
     if (url.pathname === '/api/admin/logout' && req.method === 'POST') {
-      const token = parseCookies(req.headers.cookie)[adminCookieName]
+      const cookies = parseCookies(req.headers.cookie)
+      const token = cookies[adminCookieName] || cookies['kgrcet_admin']
       if (token) db.prepare('DELETE FROM admin_sessions WHERE token_hash = ?').run(hashToken(token))
       return json(res, 200, { ok: true }, { 'Set-Cookie': adminCookie('', 0, secure) })
     }
-    const admin = currentAdmin(req)
-    if (url.pathname === '/api/admin/session' && req.method === 'GET') return json(res, 200, { session: admin ? { email: admin.email, name: admin.name } : null })
-    if (!admin) return error(res, 401, 'admin session required')
 
+    // 6. Logout all sessions for this account
+    if (url.pathname === '/api/admin/logout-all' && req.method === 'POST') {
+      db.prepare('DELETE FROM admin_sessions WHERE LOWER(email) = LOWER(?)').run(admin.email)
+      return json(res, 200, { ok: true }, { 'Set-Cookie': adminCookie('', 0, secure) })
+    }
+
+    // 7. Audit log (read-only last 100 events)
+    if (url.pathname === '/api/admin/audit-log' && req.method === 'GET') {
+      const events = db.prepare('SELECT timestamp, ip, email_attempted, result, user_agent FROM admin_audit_log ORDER BY id DESC LIMIT 100').all()
+      return json(res, 200, { events })
+    }
+
+    // 8. View registrations
     if (url.pathname === '/api/admin/registrations' && req.method === 'GET') {
-      // Unsubmitted drafts stay private: the console only learns how many are in progress, not what they contain.
       const draftsInProgress = db.prepare("SELECT data FROM drafts WHERE status = 'draft'").all().filter(({ data }) => {
         const draft = JSON.parse(data)
         return draft.members.length > 0 || ['teamName', 'teamSize', 'college', 'leadName', 'email', 'phone'].some((field) => draft[field].trim())
       }).length
       return json(res, 200, { registrations: allRegistrations().map(publicRegistration), draftsInProgress, rules })
     }
+
+    // 9. Spot registration
     if (url.pathname === '/api/admin/registrations' && req.method === 'POST') {
-      const input = await body(req)
+      const input = await readJsonBody(req)
       const problem = registrationProblem(input?.data)
       if (problem) return error(res, 400, problem)
-      // A spot team has no browser to resume from, so its session token is generated and thrown away.
       const now = Date.now()
       const tokenHash = hashToken(randomBytes(32).toString('hex'))
       const receipt = `REG-${randomBytes(8).toString('hex').toUpperCase()}`
@@ -446,12 +690,13 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       return json(res, 201, { registration: publicRegistration(allRegistrations().find((row) => row.receipt === receipt)) })
     }
 
+    // 10. Update registration or status
     const match = /^\/api\/admin\/registrations\/(REG-[A-F0-9]{16})(\/status)?$/.exec(url.pathname)
     if (match && req.method === 'PUT') {
       const [, receipt, isStatus] = match
       const existing = allRegistrations().find((row) => row.receipt === receipt)
       if (!existing) return error(res, 404, 'registration not found')
-      const input = await body(req)
+      const input = await readJsonBody(req)
       if (isStatus) {
         if (!reviewStatuses.includes(input?.status)) return error(res, 400, 'invalid status')
         db.prepare('UPDATE drafts SET review_status = ?, reviewed_by = ?, reviewed_at = ? WHERE receipt = ?').run(input.status, admin.email, Date.now(), receipt)
@@ -464,21 +709,48 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       }
       return json(res, 200, { registration: publicRegistration(allRegistrations().find((row) => row.receipt === receipt)) })
     }
+
     return error(res, 404, 'not found')
   }
 
-  async function body(req) {
-    if (!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] || '')) throw new Error('JSON body required')
-    let size = 0; const chunks = []
-    for await (const chunk of req) { size += chunk.length; if (size > maxBodyBytes) throw new Error('request body too large'); chunks.push(chunk) }
-    try { return JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { throw new Error('invalid JSON') }
+  async function readJsonBody(req, maxSize = maxBodyBytes) {
+    const contentType = req.headers['content-type'] || ''
+    if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
+      const err = new Error('JSON body required')
+      err.statusCode = 400
+      throw err
+    }
+    let size = 0
+    const chunks = []
+    for await (const chunk of req) {
+      size += chunk.length
+      if (size > maxSize) {
+        const err = new Error('request body too large')
+        err.statusCode = 413
+        throw err
+      }
+      chunks.push(chunk)
+    }
+    try {
+      return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    } catch {
+      const err = new Error('invalid JSON')
+      err.statusCode = 400
+      throw err
+    }
   }
 
   const app = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`)
+      const originalWriteHead = res.writeHead
+      res.writeHead = function (statusCode, ...args) {
+        applySecurityHeaders(req, res, url.pathname, secure)
+        return originalWriteHead.call(this, statusCode, ...args)
+      }
+
       if (url.pathname.startsWith('/api/')) {
-        if (req.method !== 'GET' && !sameOrigin(req)) return error(res, 403, 'same-origin request required')
+        if (req.method !== 'GET' && !isSameOrigin(req, secure)) return error(res, 403, 'same-origin request required')
         if (!['GET', 'PUT', 'POST'].includes(req.method)) return error(res, 405, 'method not allowed')
         if (url.pathname.startsWith('/api/admin/')) return await adminApi(req, res, url)
         if (url.pathname !== '/api/registration' && url.pathname !== '/api/registration/submit') return error(res, 404, 'not found')
@@ -486,7 +758,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         if (!tokenHash) return error(res, 401, 'resume cookie required')
         const current = () => db.prepare('SELECT data, step, status, receipt, revision FROM drafts WHERE token_hash = ?').get(tokenHash)
         if (req.method === 'GET') return json(res, 200, { draft: publicDraft(current()), rules })
-        const input = await body(req)
+        const input = await readJsonBody(req)
         if (url.pathname === '/api/registration') {
           if (!input || typeof input !== 'object' || !Number.isInteger(input.step) || input.step < 0 || input.step > 2 || !Number.isInteger(input.revision) || !Object.prototype.hasOwnProperty.call(input, 'data')) return error(res, 400, 'invalid registration update')
           const row = current()
@@ -515,11 +787,21 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       let filePath = file
       try { await stat(filePath) } catch { filePath = join(root, 'dist', 'index.html') }
       const content = await readFile(filePath)
-      res.writeHead(200, { 'Content-Type': contentTypes[extname(filePath).toLowerCase()] || 'application/octet-stream', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY' }); res.end(content)
-    } catch (err) { error(res, err.message === 'request body too large' ? 413 : 400, err.message === 'request body too large' ? err.message : 'invalid request') }
+      res.writeHead(200, { 'Content-Type': contentTypes[extname(filePath).toLowerCase()] || 'application/octet-stream' })
+      res.end(content)
+    } catch (err) {
+      error(res, err.statusCode || (err.message === 'request body too large' ? 413 : 400), err.message || 'invalid request')
+    }
   })
   app.on('close', () => db.close())
   return app
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) createApp().listen(port, () => console.log(`server listening on ${port}`))
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  try {
+    createApp().listen(port, () => console.log(`server listening on ${port}`))
+  } catch (err) {
+    console.error(`Server failed to start: ${err.message}`)
+    process.exit(1)
+  }
+}
