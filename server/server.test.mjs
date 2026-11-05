@@ -262,6 +262,11 @@ test('admin login sets a hardened session cookie and logout ends it', async (t) 
   // Verify login by email
   const jashanthByEmail = await f.call('POST', '/api/admin/login', { identifier: 'jashanthgonipati@gmail.com', password: testJashanthPassword })
   assert.equal(jashanthByEmail.status, 200)
+
+  // Verify login by alias
+  const jashanthByAlias = await f.call('POST', '/api/admin/login', { identifier: 'jashanth@ikarus.kgrcet.ac.in', password: testJashanthPassword })
+  assert.equal(jashanthByAlias.status, 200)
+  assert.deepEqual(jashanthByAlias.body.session, { email: 'jashanthgonipati@gmail.com', name: 'Jashanth Gonipati' })
 })
 
 test('admin endpoints reject anonymous, forged, and cross-origin requests', async (t) => {

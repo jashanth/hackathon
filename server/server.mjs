@@ -25,7 +25,7 @@ const contentTypes = {
 
 export const ALLOWED_ADMINS = Object.freeze([
   { email: 'saivaibhavaluguri@gmail.com', name: 'Aluguri SaiVaibhav' },
-  { email: 'jashanthgonipati@gmail.com', username: 'jashanth', name: 'Jashanth Gonipati' },
+  { email: 'jashanthgonipati@gmail.com', username: 'jashanth', name: 'Jashanth Gonipati', aliases: ['jashanth@ikarus.kgrcet.ac.in'] },
 ])
 
 const SCRYPT_N = 32768
@@ -123,21 +123,28 @@ export function parseAdminAccounts(source, isProduction = false) {
       continue
     }
     const email = typeof account.email === 'string' ? account.email.trim().toLowerCase() : ''
+    const username = typeof account.username === 'string' ? account.username.trim().toLowerCase() : ''
+    const identifier = typeof account.identifier === 'string' ? account.identifier.trim().toLowerCase() : ''
     const hash = typeof account.passwordHash === 'string' ? account.passwordHash.trim() : ''
 
-    if (!email || !hash) {
+    const lookupKey = email || username || identifier
+    if (!lookupKey || !hash) {
       if (isProduction) throw new Error('Account entry must have email and passwordHash')
       continue
     }
 
-    if (!isValidPasswordHash(hash)) {
-      if (isProduction) throw new Error(`Invalid password hash format for ${email}: expected scrypt$<salt-hex>$<hash-hex>`)
+    const matched = ALLOWED_ADMINS.find((a) =>
+      (email && (a.email.toLowerCase() === email || (a.username && a.username.toLowerCase() === email) || (a.aliases && a.aliases.some((al) => al.toLowerCase() === email)))) ||
+      (username && (a.username && a.username.toLowerCase() === username || a.email.toLowerCase() === username)) ||
+      (lookupKey && (a.email.toLowerCase() === lookupKey || (a.username && a.username.toLowerCase() === lookupKey) || (a.aliases && a.aliases.some((al) => al.toLowerCase() === lookupKey))))
+    )
+    if (!matched) {
+      if (isProduction) throw new Error(`Account ${lookupKey} is not in the allowed admin list`)
       continue
     }
 
-    const matched = ALLOWED_ADMINS.find((a) => a.email.toLowerCase() === email)
-    if (!matched) {
-      if (isProduction) throw new Error(`Account ${email} is not in the allowed admin list`)
+    if (!isValidPasswordHash(hash)) {
+      if (isProduction) throw new Error(`Invalid password hash format for ${matched.email}: expected scrypt$<salt-hex>$<hash-hex>`)
       continue
     }
 
@@ -145,6 +152,7 @@ export function parseAdminAccounts(source, isProduction = false) {
       email: matched.email,
       username: matched.username,
       name: typeof account.name === 'string' && account.name.trim() ? account.name.trim() : matched.name,
+      aliases: matched.aliases || [],
       passwordHash: hash,
     })
   }
@@ -553,7 +561,8 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
     const ipKey = `ip:${ip}`
     const matchedAccount = accounts.find((candidate) =>
       candidate.email.toLowerCase() === normalizedIdentifier ||
-      (candidate.username && candidate.username.toLowerCase() === normalizedIdentifier)
+      (candidate.username && candidate.username.toLowerCase() === normalizedIdentifier) ||
+      (candidate.aliases && candidate.aliases.some((alias) => alias.toLowerCase() === normalizedIdentifier))
     )
     const accountKey = `account:${matchedAccount ? matchedAccount.email.toLowerCase() : normalizedIdentifier}`
 
