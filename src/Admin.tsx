@@ -270,6 +270,24 @@ function Dashboard({ session, onSignOut, onExpired }: { session: Session; onSign
   const [updating, setUpdating] = useState<string | null>(null)
   const editHeading = useRef<HTMLHeadingElement>(null)
 
+  // When an action request encounters an error, verify with the session endpoint
+  // rather than immediately showing "Your session has ended" on a transient failure.
+  const verifySessionOrError = async (fallbackErrorMessage: string, actionError: unknown) => {
+    try {
+      const check = await api<{ session: Session | null }>('session')
+      if (!check?.session) {
+        onExpired()
+        return
+      }
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        onExpired()
+        return
+      }
+    }
+    setError(errorText(actionError, fallbackErrorMessage))
+  }
+
   useEffect(() => {
     let active = true
     api<{ registrations: AdminRegistration[]; draftsInProgress: number; rules: Rules }>('registrations').then((result) => {
@@ -277,10 +295,13 @@ function Dashboard({ session, onSignOut, onExpired }: { session: Session; onSign
       setRegistrations(result.registrations)
       setDraftsInProgress(result.draftsInProgress)
       setRules(result.rules)
-    }).catch((loadError: unknown) => {
+    }).catch(async (loadError: unknown) => {
       if (!active) return
-      if (loadError instanceof ApiError && loadError.status === 401) onExpired()
-      else setError(errorText(loadError, 'Could not load registrations.'))
+      if (loadError instanceof ApiError && loadError.status === 401) {
+        await verifySessionOrError('Could not load registrations.', loadError)
+      } else {
+        setError(errorText(loadError, 'Could not load registrations.'))
+      }
     }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [onExpired])
@@ -354,8 +375,11 @@ function Dashboard({ session, onSignOut, onExpired }: { session: Session; onSign
       replace(result.registration)
       setToast(`${teamName} marked ${statusLabels[status].toLowerCase()}.`)
     } catch (statusError) {
-      if (statusError instanceof ApiError && statusError.status === 401) onExpired()
-      else setError(errorText(statusError, 'Could not update the registration.'))
+      if (statusError instanceof ApiError && statusError.status === 401) {
+        await verifySessionOrError('Could not update the registration.', statusError)
+      } else {
+        setError(errorText(statusError, 'Could not update the registration.'))
+      }
     } finally {
       setUpdating(null)
     }
@@ -366,7 +390,9 @@ function Dashboard({ session, onSignOut, onExpired }: { session: Session; onSign
     try {
       await save()
     } catch (saveError) {
-      if (saveError instanceof ApiError && saveError.status === 401) onExpired()
+      if (saveError instanceof ApiError && saveError.status === 401) {
+        await verifySessionOrError('Could not save registration.', saveError)
+      }
       throw saveError
     }
   }
@@ -611,6 +637,51 @@ export default function Admin() {
     setSession(null)
     setNotice('Your session has ended. Please sign in again.')
   }, [])
+
+  // Periodic keepalive: when the user is active, call /api/admin/session every ~5 minutes
+  useEffect(() => {
+    if (!session) return
+
+    let lastActivity = Date.now()
+    const onActivity = () => {
+      lastActivity = Date.now()
+    }
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart']
+    for (const ev of events) {
+      window.addEventListener(ev, onActivity, { passive: true })
+    }
+
+    const KEEPALIVE_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
+    const ACTIVE_THRESHOLD_MS = 15 * 60 * 1000 // Active within last 15 minutes
+
+    const timer = setInterval(async () => {
+      const isVisible = typeof document !== 'undefined' && document.visibilityState === 'visible'
+      const wasActive = Date.now() - lastActivity < ACTIVE_THRESHOLD_MS
+
+      if (isVisible || wasActive) {
+        try {
+          const res = await api<{ session: Session | null }>('session')
+          if (!res?.session) {
+            setSession(null)
+            setNotice('Your session has ended. Please sign in again.')
+          }
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 401) {
+            setSession(null)
+            setNotice('Your session has ended. Please sign in again.')
+          }
+        }
+      }
+    }, KEEPALIVE_INTERVAL_MS)
+
+    return () => {
+      for (const ev of events) {
+        window.removeEventListener(ev, onActivity)
+      }
+      clearInterval(timer)
+    }
+  }, [session])
 
   async function signOut() {
     try {

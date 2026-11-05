@@ -14,8 +14,19 @@ const maxLoginBodyBytes = 4 * 1024
 const cookieName = 'registration_resume'
 const cookieTtlSeconds = 60 * 60 * 24 * 30
 const adminCookieName = '__Host-admin'
-const adminAbsoluteSessionTtlSeconds = 60 * 60 * 4 // 4 hours
-const adminIdleSessionTtlSeconds = 60 * 30 // 30 minutes
+export const DEFAULT_ADMIN_SESSION_IDLE_MINUTES = 480 // 8 hours
+export const DEFAULT_ADMIN_SESSION_MAX_HOURS = 24
+
+export function getSessionLifetimes(env = process.env) {
+  const idleMin = Number(env?.ADMIN_SESSION_IDLE_MINUTES)
+  const maxHr = Number(env?.ADMIN_SESSION_MAX_HOURS)
+  const idleMinutes = Number.isFinite(idleMin) && idleMin > 0 ? idleMin : DEFAULT_ADMIN_SESSION_IDLE_MINUTES
+  const maxHours = Number.isFinite(maxHr) && maxHr > 0 ? maxHr : DEFAULT_ADMIN_SESSION_MAX_HOURS
+  return {
+    idleSeconds: Math.max(1, Math.round(idleMinutes * 60)),
+    absoluteSeconds: Math.max(1, Math.round(maxHours * 3600)),
+  }
+}
 const reviewStatuses = ['pending', 'valid', 'invalid']
 const contentTypes = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -527,10 +538,12 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       return null
     }
 
-    const newIdle = Math.min(row.absolute_expires_at, now + adminIdleSessionTtlSeconds * 1000)
+    const { idleSeconds } = getSessionLifetimes(process.env)
+    const newIdle = Math.min(row.absolute_expires_at, now + idleSeconds * 1000)
     db.prepare('UPDATE admin_sessions SET last_active_at = ?, idle_expires_at = ? WHERE token_hash = ?').run(now, newIdle, tokenHash)
 
-    return { email: row.email, name: row.name }
+    const remainingSeconds = Math.max(1, Math.ceil((newIdle - now) / 1000))
+    return { email: row.email, name: row.name, token, remainingSeconds }
   }
 
   async function adminLogin(req, res) {
@@ -609,17 +622,20 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
 
     const token = randomBytes(32).toString('hex')
     const tokenHash = hashToken(token)
-    const absExpiry = now + adminAbsoluteSessionTtlSeconds * 1000
-    const idleExpiry = now + adminIdleSessionTtlSeconds * 1000
+    const { idleSeconds, absoluteSeconds } = getSessionLifetimes(process.env)
+    const absExpiry = now + absoluteSeconds * 1000
+    const idleExpiry = now + idleSeconds * 1000
 
     db.prepare('INSERT INTO admin_sessions VALUES (?, ?, ?, ?, ?, ?, ?)')
       .run(tokenHash, matchedAccount.email, matchedAccount.name, now, now, absExpiry, idleExpiry)
+
+    const cookieMaxAge = Math.max(1, Math.ceil((Math.min(absExpiry, idleExpiry) - now) / 1000))
 
     return json(
       res,
       200,
       { session: { email: matchedAccount.email, name: matchedAccount.name } },
-      { 'Set-Cookie': adminCookie(token, adminAbsoluteSessionTtlSeconds, secure) }
+      { 'Set-Cookie': adminCookie(token, cookieMaxAge, secure) }
     )
   }
 
@@ -649,12 +665,20 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
     // 3. Admin session check endpoint
     if (url.pathname === '/api/admin/session' && req.method === 'GET') {
       const admin = currentAdmin(req)
-      return json(res, 200, { session: admin ? { email: admin.email, name: admin.name } : null })
+      if (admin) {
+        res.setHeader('Set-Cookie', adminCookie(admin.token, admin.remainingSeconds, secure))
+        return json(res, 200, { session: { email: admin.email, name: admin.name } })
+      }
+      return json(res, 200, { session: null })
     }
 
     // 4. DENY BY DEFAULT: Every other /api/admin/* route denies without a valid session
     const admin = currentAdmin(req)
     if (!admin) return error(res, 401, 'admin session required')
+
+    if (url.pathname !== '/api/admin/logout' && url.pathname !== '/api/admin/logout-all') {
+      res.setHeader('Set-Cookie', adminCookie(admin.token, admin.remainingSeconds, secure))
+    }
 
     // 5. Logout
     if (url.pathname === '/api/admin/logout' && req.method === 'POST') {

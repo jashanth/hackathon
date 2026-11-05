@@ -32,7 +32,7 @@ async function fixture(t, rules = {}) {
   async function start() {
     const previous = {}
     try {
-      for (const key of [...Object.keys(approved), 'NODE_ENV', 'PUBLIC_ORIGIN', 'TRUST_PROXY', 'ADMIN_ACCOUNTS_JSON']) {
+      for (const key of [...Object.keys(approved), 'NODE_ENV', 'PUBLIC_ORIGIN', 'TRUST_PROXY', 'ADMIN_ACCOUNTS_JSON', 'ADMIN_SESSION_IDLE_MINUTES', 'ADMIN_SESSION_MAX_HOURS']) {
         previous[key] = process.env[key]
         if (rules[key] === undefined) delete process.env[key]
         else process.env[key] = rules[key]
@@ -190,7 +190,7 @@ async function adminFixture(t, adminAccounts = makeTestAccounts(), env = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'admin-'))
   const dbPath = join(dir, 'test.sqlite')
   let app, base
-  const keysToTrack = ['NODE_ENV', 'PUBLIC_ORIGIN', 'TRUST_PROXY', 'ADMIN_ACCOUNTS_JSON', ...Object.keys(env)]
+  const keysToTrack = ['NODE_ENV', 'PUBLIC_ORIGIN', 'TRUST_PROXY', 'ADMIN_ACCOUNTS_JSON', 'ADMIN_SESSION_IDLE_MINUTES', 'ADMIN_SESSION_MAX_HOURS', ...Object.keys(env)]
   const previousEnv = {}
   for (const key of keysToTrack) {
     previousEnv[key] = process.env[key]
@@ -246,10 +246,12 @@ test('admin login sets a hardened session cookie and logout ends it', async (t) 
   assert.match(signedIn.cookie, /HttpOnly/)
   assert.match(signedIn.cookie, /SameSite=Strict/)
   assert.match(signedIn.cookie, /Path=\//)
-  assert.match(signedIn.cookie, /Max-Age=14400/)
+  assert.match(signedIn.cookie, /Max-Age=28800/)
 
   const cookie = signedIn.cookie.split(';')[0]
-  assert.equal((await f.call('GET', '/api/admin/session', undefined, cookie)).body.session.name, 'Aluguri SaiVaibhav')
+  const sessionCheck = await f.call('GET', '/api/admin/session', undefined, cookie)
+  assert.equal(sessionCheck.body.session.name, 'Aluguri SaiVaibhav')
+  assert.match(sessionCheck.cookie, /Max-Age=28800/)
   assert.equal((await f.call('POST', '/api/admin/logout', {}, cookie)).status, 200)
   assert.deepEqual((await f.call('GET', '/api/admin/session', undefined, cookie)).body, { session: null })
   assert.equal((await f.call('GET', '/api/admin/registrations', undefined, cookie)).status, 401)
@@ -541,27 +543,49 @@ test('non-JSON and oversized login bodies are rejected', async (t) => {
   assert.equal(oversized.status, 413)
 })
 
-test('idle expiry (30m) and absolute expiry (4h) invalidate sessions', async (t) => {
-  const f = await adminFixture(t)
-  const cookie = await f.login()
-  assert.ok(cookie)
+test('configurable idle and absolute expiry from env, sliding idle, and session invalidation', async (t) => {
+  // Use short values from env: 1 minute (60s) idle, 2 hours (7200s) max
+  const f = await adminFixture(t, undefined, {
+    ADMIN_SESSION_IDLE_MINUTES: '1',
+    ADMIN_SESSION_MAX_HOURS: '2',
+  })
+  const signedIn = await f.call('POST', '/api/admin/login', { email: testAdminEmail, password: testAdminPassword })
+  assert.equal(signedIn.status, 200)
+  assert.match(signedIn.cookie, /Max-Age=60/)
+  const cookie = signedIn.cookie.split(';')[0]
 
   // Verify session works initially
   assert.equal((await f.call('GET', '/api/admin/registrations', undefined, cookie)).status, 200)
 
+  // Verify sliding idle extends SQLite idle_expires_at and re-issues cookie Max-Age
+  const db1 = new DatabaseSync(f.dbPath)
+  const initialRow = db1.prepare('SELECT last_active_at, idle_expires_at, absolute_expires_at FROM admin_sessions').get()
+  db1.close()
+
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  const refreshed = await f.call('GET', '/api/admin/registrations', undefined, cookie)
+  assert.equal(refreshed.status, 200)
+  assert.match(refreshed.cookie, /Max-Age=60/)
+
+  const db2 = new DatabaseSync(f.dbPath)
+  const refreshedRow = db2.prepare('SELECT last_active_at, idle_expires_at FROM admin_sessions').get()
+  db2.close()
+  assert.ok(refreshedRow.last_active_at >= initialRow.last_active_at)
+  assert.ok(refreshedRow.idle_expires_at >= initialRow.idle_expires_at)
+
   // Simulate idle expiry by winding idle_expires_at back in SQLite
-  const db = new DatabaseSync(f.dbPath)
-  db.prepare('UPDATE admin_sessions SET idle_expires_at = ?').run(Date.now() - 1000)
-  db.close()
+  const db3 = new DatabaseSync(f.dbPath)
+  db3.prepare('UPDATE admin_sessions SET idle_expires_at = ?').run(Date.now() - 1000)
+  db3.close()
 
   // Next call should be denied (401)
   assert.equal((await f.call('GET', '/api/admin/registrations', undefined, cookie)).status, 401)
 
-  // Login again, then simulate absolute expiry
+  // Login again, then simulate absolute expiry (even with fresh idle time)
   const cookie2 = await f.login()
-  const db2 = new DatabaseSync(f.dbPath)
-  db2.prepare('UPDATE admin_sessions SET absolute_expires_at = ?').run(Date.now() - 1000)
-  db2.close()
+  const db4 = new DatabaseSync(f.dbPath)
+  db4.prepare('UPDATE admin_sessions SET absolute_expires_at = ?').run(Date.now() - 1000)
+  db4.close()
 
   assert.equal((await f.call('GET', '/api/admin/registrations', undefined, cookie2)).status, 401)
 })
