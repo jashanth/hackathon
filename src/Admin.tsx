@@ -185,7 +185,7 @@ function Login({ onLogin }: { onLogin: (session: Session) => void }) {
     <main className="admin-login container">
       <div className="section-pill"><Sparkles size={12} /> ADMINISTRATIVE PORTAL // ORGANIZER CONSOLE</div>
       <h1>Sign in to <span>Console.</span></h1>
-      <p className="admin-login-lede">Only for KGRCET Hackathon organizers.</p>
+      <p className="admin-login-lede">IP Based Login System</p>
       <div className="admin-security">
         <span><ShieldCheck size={13} /> Constant-Time Auth</span>
       </div>

@@ -38,10 +38,10 @@ export const event = {
 export const navigation = [
   { label: 'Overview', href: '#about' },
   { label: 'Tracks', href: '#tracks' },
-  { label: 'Experience', href: '#prizes' },
   { label: 'Timeline', href: '#schedule' },
-  { label: 'Event Info', href: '#info' },
+  { label: 'Experience', href: '#prizes' },
   { label: 'Organizers', href: '#organizers' },
+  { label: 'Event Info', href: '#info' },
 ]
 
 export const keyStats = [
@@ -199,7 +199,7 @@ export type OrganizerGroup = {
   title: string
   role: string
   accent: 'gold' | 'violet' | 'cyan'
-  entries: { name: string; designation: string; department?: string }[]
+  entries: { name: string; designation: string; department?: string; avatar?: string }[]
 }
 
 export const organizerGroups: OrganizerGroup[] = [
@@ -207,7 +207,13 @@ export const organizerGroups: OrganizerGroup[] = [
     title: 'Convener',
     role: 'Event Leadership',
     accent: 'gold',
-    entries: [],
+    entries: [
+      {
+        name: 'Mrs. M. Manasa',
+        designation: 'HoD CSE',
+        department: 'Department of Computer Science and Engineering',
+      },
+    ],
   },
   {
     title: 'Co-Conveners',
@@ -216,9 +222,15 @@ export const organizerGroups: OrganizerGroup[] = [
     entries: [],
   },
   {
-    title: 'Faculty Coordinators',
+    title: 'Faculty Co-ordinators',
     role: 'Academic Support',
     accent: 'violet',
-    entries: [],
+    entries: [
+      {
+        name: 'Mrs. K. Swapna Rani',
+        designation: 'Assistant Professor, CSE',
+        department: 'Department of Computer Science and Engineering',
+      },
+    ],
   },
 ]

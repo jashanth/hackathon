@@ -1,6 +1,4 @@
 # KGRCET Hackathon
-laptop = lenovolegionpro7
-
 A full-stack hackathon registration and organizer portal built with a raw `node:http` backend, Node's built-in `node:sqlite` (`DatabaseSync`), and a React/Vite frontend.
 
 ---

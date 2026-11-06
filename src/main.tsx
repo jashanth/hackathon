@@ -47,6 +47,7 @@ import Admin from './Admin'
 import Cosmos from './world/Cosmos'
 import { Decode, Reveal, useSurfaceEffects } from './world/fx'
 import collegeLogo from '../assets/kgrcet-logo.png'
+import organizerAvatar from '../assets/organizer-avatar.png'
 
 interface CountdownState {
   days: number
@@ -319,7 +320,7 @@ const getInfoIcon = (name: string) => {
 }
 
 const marqueeText = <>
-  Organized by <strong>KG Reddy College of Engineering &amp; Technology</strong> in collaboration with the <strong>Cybersecurity &amp; Ethical Hacking Club</strong>. 36 hours of non-stop engineering to pioneer breakthroughs in Generative AI, Cyber Defense, and Autonomous Systems.
+  Organized by the <strong>Department of Computer Science and Engineering</strong>, <strong>KG Reddy College of Engineering and Technology</strong>. Led by the <strong>Cybersecurity &amp; Ethical Hacking Club</strong>, in association with <strong>Blockchain Club</strong> and <strong>CSI Student Chapter</strong>.
 </>
 
 function App() {
@@ -548,7 +549,7 @@ function App() {
         {/* Full-Bleed Marquee */}
         <div
           className="hero-marquee"
-          aria-label="Organized by KG Reddy College of Engineering and Technology in collaboration with the Cybersecurity and Ethical Hacking Club. 36 hours of non-stop engineering to pioneer breakthroughs in Generative AI, Cyber Defense, and Autonomous Systems."
+          aria-label="Organized by the Department of Computer Science and Engineering, KG Reddy College of Engineering and Technology. Led by the Cybersecurity & Ethical Hacking Club, in association with Blockchain Club and CSI Student Chapter."
         >
           <div className="marquee-track">
             <div className="marquee-copy">
@@ -821,7 +822,7 @@ function App() {
                     </> : group.entries.map((member, mIdx) => (
                       <div className="member-card" key={mIdx}>
                         <div className="member-avatar">
-                          {member.name.split(' ').map((n) => n[0]).slice(0, 2).join('') || 'KG'}
+                          <img src={member.avatar || organizerAvatar} alt={member.name} className="member-avatar-img" />
                         </div>
                         <div className="member-info">
                           <h5>{member.name}</h5>
