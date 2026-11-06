@@ -4,8 +4,33 @@ import { AlertCircle, ArrowRight, ChevronDown, Download, Eye, EyeOff, LogOut, Pe
 import './admin.css'
 
 type Session = { email: string; name: string }
-type Member = { name: string; email: string; college: string }
-type TeamData = { teamName: string; teamSize: string; college: string; leadName: string; email: string; phone: string; members: Member[] }
+type Member = {
+  name: string
+  email: string
+  phone?: string
+  rollNumber?: string
+  gender?: string
+  year?: string
+  college: string
+  collegeCode?: string
+  courseName?: string
+  foodPreference?: string
+}
+type TeamData = {
+  teamName: string
+  teamSize: string
+  leadName: string
+  email: string
+  phone: string
+  rollNumber?: string
+  gender?: string
+  year?: string
+  college: string
+  collegeCode?: string
+  courseName?: string
+  foodPreference?: string
+  members: Member[]
+}
 type ReviewStatus = 'pending' | 'valid' | 'invalid'
 type AdminRegistration = {
   receipt: string
@@ -21,7 +46,21 @@ type Rules = { minTeamSize: number | null; maxTeamSize: number | null; submissio
 type Tab = 'registrations' | 'spot' | 'counts'
 
 const statusLabels: Record<ReviewStatus, string> = { pending: 'Pending', valid: 'Valid', invalid: 'Invalid' }
-const blankTeam = (): TeamData => ({ teamName: '', teamSize: '', college: '', leadName: '', email: '', phone: '', members: [] })
+const blankTeam = (): TeamData => ({
+  teamName: '',
+  teamSize: '',
+  leadName: '',
+  email: '',
+  phone: '',
+  rollNumber: '',
+  gender: '',
+  year: '',
+  college: '',
+  collegeCode: '',
+  courseName: '',
+  foodPreference: '',
+  members: [],
+})
 
 class ApiError extends Error {
   constructor(message: string, readonly status: number, readonly remainingLockoutSeconds?: number) {
@@ -58,10 +97,44 @@ function csvCell(value: string) {
 }
 
 function downloadCsv(registrations: AdminRegistration[]) {
-  const rows = [['Receipt', 'Team', 'Role', 'Name', 'Email', 'Phone', 'College', 'Status', 'Source']]
+  const rows = [['Receipt', 'Team', 'Role', 'Name', 'Email', 'Phone', 'Roll Number', 'Gender', 'Year', 'College', 'College Code', 'Course', 'Food Preference', 'Status', 'Source']]
   for (const { receipt, data, reviewStatus, source } of registrations) {
-    rows.push([receipt, data.teamName, 'Leader', data.leadName, data.email, data.phone, data.college, statusLabels[reviewStatus], source])
-    for (const member of data.members) rows.push([receipt, data.teamName, 'Member', member.name, member.email, '', member.college, statusLabels[reviewStatus], source])
+    rows.push([
+      receipt,
+      data.teamName,
+      'Leader',
+      data.leadName,
+      data.email,
+      data.phone,
+      data.rollNumber || '',
+      data.gender || '',
+      data.year || '',
+      data.college,
+      data.collegeCode || '',
+      data.courseName || '',
+      data.foodPreference || '',
+      statusLabels[reviewStatus],
+      source,
+    ])
+    for (const member of data.members) {
+      rows.push([
+        receipt,
+        data.teamName,
+        'Member',
+        member.name,
+        member.email,
+        member.phone || '',
+        member.rollNumber || '',
+        member.gender || '',
+        member.year || '',
+        member.college,
+        member.collegeCode || '',
+        member.courseName || '',
+        member.foodPreference || '',
+        statusLabels[reviewStatus],
+        source,
+      ])
+    }
   }
   const url = URL.createObjectURL(new Blob([`﻿${rows.map((row) => row.map(csvCell).join(',')).join('\r\n')}`], { type: 'text/csv;charset=utf-8' }))
   const link = document.createElement('a')
@@ -184,10 +257,10 @@ function TeamForm({ initial, submitLabel, onSave, onCancel, formId }: {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const teamField = (key: 'teamName' | 'college' | 'leadName' | 'email' | 'phone', label: string, type = 'text') => (
+  const teamField = (key: keyof Omit<TeamData, 'members'>, label: string, type = 'text') => (
     <div className="form-group" key={key}>
       <label htmlFor={`${formId}-${key}`}>{label}</label>
-      <input id={`${formId}-${key}`} className="form-input" type={type} required maxLength={200} autoComplete="off" value={team[key]} onChange={(changeEvent) => setTeam({ ...team, [key]: changeEvent.target.value })} />
+      <input id={`${formId}-${key}`} className="form-input" type={type} required={key === 'teamName' || key === 'leadName' || key === 'email' || key === 'phone'} maxLength={200} autoComplete="off" value={(team[key] as string) || ''} onChange={(changeEvent) => setTeam({ ...team, [key]: changeEvent.target.value })} />
     </div>
   )
 
@@ -211,6 +284,7 @@ function TeamForm({ initial, submitLabel, onSave, onCancel, formId }: {
       <div className="form-grid admin-form-grid">
         {teamField('teamName', 'Team name')}
         {teamField('college', 'College / institution')}
+        {teamField('collegeCode', 'College / institution code')}
         {teamField('leadName', 'Team leader name')}
         {teamField('email', 'Leader email', 'email')}
         {teamField('phone', 'Leader phone', 'tel')}

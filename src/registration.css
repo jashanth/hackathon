@@ -1,6 +1,5 @@
 .registration { max-width: 960px; padding-top: calc(var(--header-height) + clamp(36px, 7vh, 80px)); padding-bottom: 88px; }
 .registration-intro { margin-bottom: 40px; }
-.registration-eyebrow { margin: 0; color: var(--gold); font: 400 12px/1.6 var(--font-mono); letter-spacing: .14em; }
 .registration h1 { margin: 12px 0 14px; font: 300 clamp(50px, 8vw, 96px)/.98 var(--font-display); letter-spacing: -.012em; }
 .registration-intro > p:last-child { margin: 0; color: var(--ink-soft); font-size: 17px; }
 .registration-note, .registration-privacy { color: var(--ink-soft); font-size: 15px; }
@@ -22,8 +21,21 @@
 .registration-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
 .registration .form-group { min-width: 0; align-content: start; }
 .registration .form-input { font-size: 16px; }
+.registration select.form-input {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23dcb872' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 40px;
+  cursor: pointer;
+}
+.registration select.form-input option {
+  background: var(--surface-solid);
+  color: var(--ink);
+}
 .registration small { font-size: 13px; color: var(--ink-soft); line-height: 1.5; }
-.registration :is(input, button, a, h2):focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
+.registration :is(input, select, button, a, h2):focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
 .registration [aria-invalid='true'] { border-color: var(--danger); }
 .registration-error { display: block; color: var(--danger); font-size: 13.5px; }
 .registration-members { margin-top: 24px; }

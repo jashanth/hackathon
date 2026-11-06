@@ -324,9 +324,16 @@ function validateDraftShape(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return 'data must be an object'
   const fields = ['teamName', 'teamSize', 'college', 'leadName', 'email', 'phone']
   if (fields.some((field) => typeof data[field] !== 'string' || data[field].length > 200)) return 'all team fields must be short strings'
+  for (const f of ['collegeCode', 'rollNumber', 'gender', 'year', 'courseName', 'foodPreference']) {
+    if (data[f] !== undefined && (typeof data[f] !== 'string' || data[f].length > 200)) return 'all team fields must be short strings'
+  }
   if (!Array.isArray(data.members)) return 'members must be an array'
   for (const member of data.members) {
-    if (!member || typeof member !== 'object' || Array.isArray(member) || ['name', 'email', 'college'].some((field) => typeof member[field] !== 'string' || member[field].length > 200)) return 'member details are invalid'
+    if (!member || typeof member !== 'object' || Array.isArray(member)) return 'member details are invalid'
+    if (['name', 'email', 'college'].some((field) => typeof member[field] !== 'string' || member[field].length > 200)) return 'member details are invalid'
+    for (const f of ['phone', 'rollNumber', 'gender', 'year', 'collegeCode', 'courseName', 'foodPreference']) {
+      if (member[f] !== undefined && (typeof member[f] !== 'string' || member[f].length > 200)) return 'member details are invalid'
+    }
   }
   return null
 }
@@ -355,16 +362,31 @@ function validateData(data, rules) {
 }
 
 function cleanRegistration(data) {
-  const text = (value) => value.trim()
-  return {
+  const text = (value) => (value ? String(value).trim() : '')
+  const member = (m) => {
+    const res = {
+      name: text(m.name),
+      email: text(m.email),
+      college: text(m.college),
+    }
+    for (const key of ['phone', 'rollNumber', 'gender', 'year', 'collegeCode', 'courseName', 'foodPreference']) {
+      if (m[key] !== undefined) res[key] = text(m[key])
+    }
+    return res
+  }
+  const cleaned = {
     teamName: text(data.teamName),
     teamSize: String(data.members.length + 1),
     college: text(data.college),
     leadName: text(data.leadName),
     email: text(data.email),
-    phone: data.phone.replace(/[\s().-]/g, ''),
-    members: data.members.map((member) => ({ name: text(member.name), email: text(member.email), college: text(member.college) })),
+    phone: (data.phone || '').replace(/[\s().-]/g, ''),
+    members: data.members.map(member),
   }
+  for (const key of ['collegeCode', 'rollNumber', 'gender', 'year', 'courseName', 'foodPreference']) {
+    if (data[key] !== undefined) cleaned[key] = text(data[key])
+  }
+  return cleaned
 }
 
 export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJson } = {}) {
@@ -695,7 +717,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
     if (url.pathname === '/api/admin/registrations' && req.method === 'GET') {
       const draftsInProgress = db.prepare("SELECT data FROM drafts WHERE status = 'draft'").all().filter(({ data }) => {
         const draft = JSON.parse(data)
-        return draft.members.length > 0 || ['teamName', 'teamSize', 'college', 'leadName', 'email', 'phone'].some((field) => draft[field].trim())
+        return draft.members.length > 0 || ['teamName', 'teamSize', 'college', 'collegeCode', 'leadName', 'email', 'phone'].some((field) => draft[field] && draft[field].trim())
       }).length
       return json(res, 200, { registrations: allRegistrations().map(publicRegistration), draftsInProgress, rules })
     }

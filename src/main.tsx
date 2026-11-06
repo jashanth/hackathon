@@ -870,7 +870,7 @@ function App() {
       {/* =================================================================
           FOOTER
           ================================================================= */}
-      {!isAdmin && (
+      {!isSubpage && (
         <footer className="site-footer">
           <div className="container footer-container">
             <div className="footer-grid">
