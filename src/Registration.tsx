@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
+import QRCode from 'qrcode'
+import { payment, upiLink } from './config/payment'
 import './registration.css'
 
 export type Member = {
@@ -32,10 +34,22 @@ export type Data = {
 }
 
 type Draft = { data: Data; step: number; status: string; receipt: string | null; revision: number }
-type Rules = { minTeamSize: number | null; maxTeamSize: number | null; submissionEnabled: boolean }
+type Rules = { minTeamSize: number | null; maxTeamSize: number | null; feePerPerson: number; submissionEnabled: boolean }
 type Reply = { draft: Draft; rules?: Rules; error?: string }
 
 const steps = ['Team details', 'Members', 'Payment and Review']
+const rupees = (amount: number) => `₹${amount.toLocaleString('en-IN')}`
+const screenshotTypes = ['image/png', 'image/jpeg', 'image/webp']
+const maxScreenshotBytes = 2 * 1024 * 1024
+
+function readAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('The payment screenshot could not be read. Please choose it again.'))
+    reader.onerror = () => reject(new Error('The payment screenshot could not be read. Please choose it again.'))
+    reader.readAsDataURL(file)
+  })
+}
 
 const teamSizeOptions = ['2', '3', '4'] as const
 const genderOptions = ['Male', 'Female', 'Other'] as const
@@ -106,11 +120,11 @@ async function request(method: string, body?: unknown, submit = false, signal?: 
   })
   const result = (await response.json()) as Reply
   if (!response.ok) {
-    throw new Error(
+    throw Object.assign(new Error(
       response.status === 409
         ? 'The server draft changed, possibly in another tab. Retry will save your fields over the latest draft.'
         : result.error || `Request failed (${response.status}).`
-    )
+    ), { status: response.status })
   }
   if (!result.draft || !Number.isInteger(result.draft.revision)) {
     throw new Error('The server returned an invalid draft.')
@@ -214,6 +228,11 @@ export default function Registration() {
   const [saveStatus, setSaveStatus] = useState('Loading server draft...')
   const [busy, setBusy] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  // Payment details stay on this page and are sent only with the final submission.
+  const [utrNumber, setUtrNumber] = useState('')
+  const [screenshot, setScreenshot] = useState<File | null>(null)
+  const [screenshotPreview, setScreenshotPreview] = useState('')
+  const [paymentQr, setPaymentQr] = useState('')
   const heading = useRef<HTMLHeadingElement>(null)
   const form = useRef<HTMLFormElement>(null)
 
@@ -287,6 +306,48 @@ export default function Registration() {
       clearTimeout(timer.current)
     }
   }, [])
+
+  useEffect(() => {
+    if (!screenshot) { setScreenshotPreview(''); return }
+    const url = URL.createObjectURL(screenshot)
+    setScreenshotPreview(url)
+    return () => URL.revokeObjectURL(url)
+  }, [screenshot])
+
+  // The QR carries this team's exact amount, so a new one is drawn whenever the amount or team name changes.
+  const amountDue = rules && draft ? rules.feePerPerson * (draft.data.members.length + 1) : 0
+  const payLink = draft && amountDue ? upiLink(amountDue, draft.data.teamName) : ''
+  useEffect(() => {
+    if (!payLink) return
+    let active = true
+    setPaymentQr('')
+    QRCode.toDataURL(payLink, { width: 560, margin: 2, errorCorrectionLevel: 'M' })
+      .then((url) => { if (active) setPaymentQr(url) })
+      .catch(() => { if (active) setErrors((current) => ({ ...current, payment: 'The payment QR could not be created. Please contact the organizers.' })) })
+    return () => { active = false }
+  }, [payLink])
+
+  function chooseScreenshot(file: File | undefined) {
+    const { screenshot: _, ...rest } = errors
+    if (!file) { setScreenshot(null); return }
+    const problem = !screenshotTypes.includes(file.type)
+      ? 'Upload a PNG, JPEG or WebP screenshot.'
+      : file.size > maxScreenshotBytes ? 'The screenshot must be 2 MB or smaller.' : ''
+    setScreenshot(problem ? null : file)
+    setErrors(problem ? { ...rest, screenshot: problem } : rest)
+  }
+
+  function checkPayment() {
+    const found: Record<string, string> = {}
+    if (!/^\d{12}$/.test(utrNumber)) found.utrNumber = 'Enter the 12-digit UTR number from your UPI app.'
+    if (!screenshot) found.screenshot = errors.screenshot || 'Upload the payment screenshot.'
+    setErrors(found)
+    if (Object.keys(found).length) {
+      requestAnimationFrame(() => form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus())
+      return false
+    }
+    return true
+  }
 
   function save(): Promise<boolean> {
     clearTimeout(timer.current)
@@ -430,13 +491,22 @@ export default function Registration() {
       go(local.current.step + 1)
       return
     }
-    if (!rules?.submissionEnabled || paused.current || !check(true)) return
+    if (!rules?.submissionEnabled || paused.current || !check(true) || !checkPayment()) return
     locked.current = true
     setBusy(true)
+    let screenshotDataUrl: string
+    try {
+      screenshotDataUrl = await readAsDataUrl(screenshot!)
+    } catch (error) {
+      setErrors({ screenshot: error instanceof Error ? error.message : 'The payment screenshot could not be read.' })
+      locked.current = false
+      setBusy(false)
+      return
+    }
     try {
       if (!(await save())) return
       setSaveStatus('Submitting to server...')
-      const result = await request('POST', { revision: revision.current }, true)
+      const result = await request('POST', { revision: revision.current, utrNumber, screenshotDataUrl }, true)
       if (result.draft.status !== 'submitted' || !result.draft.receipt) {
         throw new Error('The server did not confirm submission. Retry to check its status.')
       }
@@ -446,6 +516,13 @@ export default function Registration() {
       setSaveStatus('Submission confirmed by server.')
       requestAnimationFrame(() => heading.current?.focus())
     } catch (error) {
+      // The server rejected the details (for example a UTR already used), so the team can correct them and submit again.
+      if ((error as { status?: number }).status === 400) {
+        setErrors({ payment: error instanceof Error ? error.message : 'The submission was rejected.' })
+        setSaveStatus('Submission not accepted. Correct the details below and submit again.')
+        requestAnimationFrame(() => heading.current?.focus())
+        return
+      }
       paused.current = true
       setRemoteError(error instanceof Error ? error.message : 'Submission could not be confirmed.')
       setSaveStatus('Submission not confirmed. Retry to check the server before submitting again.')
@@ -570,9 +647,9 @@ export default function Registration() {
 
             {submitted ? (
               <section className="registration-panel">
-                <h2 tabIndex={-1} ref={heading}>Registration received</h2>
-                <p>The server has confirmed your submission for <strong>{data.teamName}</strong>.</p>
-                <p>Receipt: <strong className="registration-receipt">{draft.receipt || 'Not provided by server'}</strong></p>
+                <h2 tabIndex={-1} ref={heading}>Payment under verification</h2>
+                <p>Your registration for <strong>{data.teamName}</strong> is recorded. The organizers will check your payment against the UTR and screenshot you sent, then confirm your team.</p>
+                <p>Save your receipt: <strong className="registration-receipt">{draft.receipt || 'Not provided by server'}</strong></p>
                 <a href="/" className="btn-secondary-luxury">Back to overview</a>
               </section>
             ) : (
@@ -582,10 +659,10 @@ export default function Registration() {
                 </h2>
                 <p className="registration-note">
                   {draft.step === 0
-                    ? 'All fields are required. The leader counts as one team member.'
+                    ? `All fields are required. The leader counts as one team member. The fee is ${rupees(rules.feePerPerson)} per person.`
                     : draft.step === 1
                     ? 'Fill in the details for the remaining team members. Your leader is already included.'
-                    : 'Check every detail before submitting. A saved draft is not a registration.'}
+                    : 'Check every detail, pay the fee, then submit with your payment proof. A saved draft is not a registration.'}
                 </p>
 
                 {Object.keys(errors).length > 0 && (
@@ -706,6 +783,90 @@ export default function Registration() {
                           </dl>
                         </section>
                       ))}
+
+                      <section className="registration-payment" aria-labelledby="payment-title">
+                        <div className="registration-review-heading">
+                          <h3 id="payment-title">Payment</h3>
+                        </div>
+                        <div className="registration-payment-grid">
+                          <figure className="registration-qr">
+                            {paymentQr
+                              ? <img src={paymentQr} alt={`UPI QR code to pay ${rupees(amountDue)} to ${payment.payeeName}`} width={560} height={560} />
+                              : <span className="registration-qr-loading" role="status">Preparing your QR…</span>}
+                            <figcaption>
+                              <strong>{rupees(amountDue)}</strong>
+                              <span>{payment.payeeName}</span>
+                              <span className="registration-upi-id">{payment.payeeAddress}</span>
+                            </figcaption>
+                          </figure>
+                          <div className="registration-payment-details">
+                            <p className="registration-due">
+                              <span>Amount to pay</span>
+                              <strong>{rupees(rules.feePerPerson * (data.members.length + 1))}</strong>
+                              <small>{rupees(rules.feePerPerson)} per person × {data.members.length + 1} people</small>
+                            </p>
+                            <ol className="registration-pay-steps">
+                              <li>Scan the QR with any UPI app (PhonePe, Google Pay, Paytm). On a phone, tap <b>Pay with UPI app</b> instead.</li>
+                              <li>The amount <b>{rupees(amountDue)}</b> is filled in for you. Pay exactly that amount; a different amount cannot be verified.</li>
+                              <li>After paying, copy the 12-digit UTR and save a screenshot of the payment.</li>
+                            </ol>
+                            {payLink && <a className="btn-primary-luxury registration-pay-link" href={payLink}>Pay with UPI app</a>}
+                            <table className="registration-fee-table">
+                              <caption>Fee by team size</caption>
+                              <tbody>
+                                {teamSizeOptions.map((size) => (
+                                  <tr key={size} aria-current={size === String(data.members.length + 1) ? 'true' : undefined}>
+                                    <th scope="row">Team of {size}</th>
+                                    <td>{rupees(rules.feePerPerson * Number(size))}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                        <div className="form-grid registration-grid">
+                          <div className="form-group">
+                            <label htmlFor="utrNumber">UTR / transaction reference number</label>
+                            <input
+                              id="utrNumber"
+                              className="form-input"
+                              inputMode="numeric"
+                              autoComplete="off"
+                              required
+                              maxLength={12}
+                              placeholder="12 digits, e.g. 412345678901"
+                              value={utrNumber}
+                              aria-invalid={Boolean(errors.utrNumber)}
+                              aria-describedby={['utrNumber-hint', errors.utrNumber ? 'utrNumber-error' : ''].filter(Boolean).join(' ')}
+                              onChange={(e) => {
+                                setUtrNumber(e.target.value.replace(/\D/g, '').slice(0, 12))
+                                const { utrNumber: _, ...rest } = errors
+                                setErrors(rest)
+                              }}
+                            />
+                            <small id="utrNumber-hint">Find it in your UPI app under the payment's details. It may be called UTR, UPI reference or transaction ID.</small>
+                            {errors.utrNumber && <span id="utrNumber-error" className="registration-error">{errors.utrNumber}</span>}
+                          </div>
+                          <div className="form-group">
+                            <label htmlFor="screenshot">Payment screenshot</label>
+                            <input
+                              id="screenshot"
+                              className="form-input registration-file"
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              required
+                              aria-invalid={Boolean(errors.screenshot)}
+                              aria-describedby={['screenshot-hint', errors.screenshot ? 'screenshot-error' : ''].filter(Boolean).join(' ')}
+                              onChange={(e) => chooseScreenshot(e.target.files?.[0])}
+                            />
+                            <small id="screenshot-hint">PNG, JPEG or WebP, up to 2 MB. It must show the amount and the UTR.</small>
+                            {errors.screenshot && <span id="screenshot-error" className="registration-error">{errors.screenshot}</span>}
+                            {screenshotPreview && <img className="registration-proof-preview" src={screenshotPreview} alt="Selected payment screenshot" />}
+                          </div>
+                        </div>
+                        {errors.payment && <p role="alert" className="registration-error">{errors.payment}</p>}
+                      </section>
 
                       {!rules.submissionEnabled && (
                         <p id="submission-notice" className="registration-notice">

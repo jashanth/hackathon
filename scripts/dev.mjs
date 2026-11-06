@@ -39,7 +39,7 @@ const start = (name, args, required) => {
   children.push(child)
 }
 
-if (existing) console.log(`Using the API already running on port ${apiPort}.`)
+if (existing) console.log(`Using the API already running on port ${apiPort}. If you changed server code or .env, stop that terminal and run npm run dev again.`)
 else start('API server', ['--env-file-if-exists=.env', 'server/server.mjs'], true)
 start('Vite dev server', ['node_modules/vite/bin/vite.js', ...process.argv.slice(2)], true)
 

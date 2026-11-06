@@ -11,6 +11,9 @@ const port = Number(process.env.PORT || 3001)
 const databasePath = process.env.DATABASE_PATH || join(root, 'data', 'registration.sqlite')
 const maxBodyBytes = 64 * 1024
 const maxLoginBodyBytes = 4 * 1024
+// Requests that carry a payment screenshot: a 2 MB image grows by a third as base64.
+const maxPaymentBodyBytes = 3 * 1024 * 1024
+const maxPaymentProofBytes = 2 * 1024 * 1024
 const cookieName = 'registration_resume'
 const cookieTtlSeconds = 60 * 60 * 24 * 30
 const adminCookieName = '__Host-admin'
@@ -177,7 +180,8 @@ function rulesFromEnvironment() {
   }
   const minTeamSize = number('REGISTRATION_MIN_TEAM_SIZE')
   const maxTeamSize = number('REGISTRATION_MAX_TEAM_SIZE')
-  return { minTeamSize, maxTeamSize, submissionEnabled: process.env.SUBMISSION_ENABLED === 'true' && minTeamSize !== null && maxTeamSize !== null && minTeamSize <= maxTeamSize }
+  const feePerPerson = number('REGISTRATION_FEE_PER_PERSON') ?? 649
+  return { minTeamSize, maxTeamSize, feePerPerson, submissionEnabled: process.env.SUBMISSION_ENABLED === 'true' && minTeamSize !== null && maxTeamSize !== null && minTeamSize <= maxTeamSize }
 }
 
 const sha256 = (value) => createHash('sha256').update(String(value), 'utf8').digest('hex')
@@ -200,7 +204,9 @@ function cookieHeader(token, secure) {
 }
 
 function adminCookie(value, maxAge = ADMIN_COOKIE_MAX_AGE, secure) {
-  return `${adminCookieName}=${value}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`
+  // Browsers drop __Host- cookies without Secure, so plain-http dev uses an unprefixed name.
+  const name = secure ? adminCookieName : 'kgrcet_admin'
+  return `${name}=${value}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`
 }
 
 function clientIp(req) {
@@ -303,6 +309,20 @@ function applySecurityHeaders(req, res, pathname = '', secure = false) {
   }
 }
 
+// Accepts a base64 data URL only when its bytes really are the PNG, JPEG or WebP it claims to be.
+function paymentProofFromDataUrl(value) {
+  if (typeof value !== 'string') return null
+  const match = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(value)
+  if (!match) return null
+  const image = Buffer.from(match[2], 'base64')
+  if (image.length === 0 || image.length > maxPaymentProofBytes || image.toString('base64') !== match[2]) return null
+  const validSignature =
+    (match[1] === 'image/png' && image.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) ||
+    (match[1] === 'image/jpeg' && image[0] === 255 && image[1] === 216 && image[2] === 255) ||
+    (match[1] === 'image/webp' && image.toString('ascii', 0, 4) === 'RIFF' && image.toString('ascii', 8, 12) === 'WEBP')
+  return validSignature ? { mime: match[1], image } : null
+}
+
 function publicDraft(row) {
   return row && { data: JSON.parse(row.data), step: row.step, status: row.status, receipt: row.receipt, revision: row.revision }
 }
@@ -317,6 +337,10 @@ function publicRegistration(row) {
     reviewedBy: row.reviewed_by,
     reviewedAt: row.reviewed_at,
     submittedAt: row.submitted_at,
+    paymentMethod: row.payment_method || 'upi',
+    utrNumber: row.utr_number || null,
+    amount: row.amount_rupees ?? 0,
+    hasPaymentProof: Boolean(row.has_proof),
   }
 }
 
@@ -460,9 +484,16 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
     ['reviewed_at', 'INTEGER'],
     ['source', "TEXT NOT NULL DEFAULT 'website'"],
     ['submitted_at', 'INTEGER'],
+    ['payment_method', 'TEXT'],
+    ['utr_number', 'TEXT'],
+    ['amount_rupees', 'INTEGER'],
+    ['proof_mime', 'TEXT'],
+    ['proof_data', 'BLOB'],
   ]) {
     if (!draftColumns.has(name)) db.exec(`ALTER TABLE drafts ADD COLUMN ${name} ${definition}`)
   }
+  // One UPI payment can only pay for one team.
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS drafts_utr_number ON drafts(utr_number) WHERE utr_number IS NOT NULL')
 
   const rules = rulesFromEnvironment()
 
@@ -534,7 +565,26 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       .run(Date.now(), ip, String(email || '').slice(0, 254), result, String(userAgent || '').slice(0, 500))
   }
 
-  const allRegistrations = () => db.prepare("SELECT receipt, revision, data, source, review_status, reviewed_by, reviewed_at, submitted_at FROM drafts WHERE status = 'submitted' ORDER BY submitted_at DESC").all()
+  const allRegistrations = () => db.prepare("SELECT receipt, revision, data, source, review_status, reviewed_by, reviewed_at, submitted_at, payment_method, utr_number, amount_rupees, proof_mime IS NOT NULL AS has_proof FROM drafts WHERE status = 'submitted' ORDER BY submitted_at DESC").all()
+  const amountFor = (data) => rules.feePerPerson * (data.members.length + 1)
+
+  // Reads the payment part of a request. Cash at the desk has no UTR or screenshot; UPI needs a unique 12-digit UTR.
+  function readPayment(input, { requireProof, receipt = null }) {
+    const method = input?.paymentMethod ?? 'upi'
+    if (method !== 'upi' && method !== 'cash') return { problem: 'payment method must be upi or cash' }
+    if (method === 'cash') return { payment: { method, utr: null, proof: null } }
+    const utr = typeof input?.utrNumber === 'string' ? input.utrNumber.trim() : ''
+    if (!/^\d{12}$/.test(utr)) return { problem: 'Enter the 12-digit UTR number from the UPI payment.' }
+    if (db.prepare('SELECT 1 FROM drafts WHERE utr_number = ? AND receipt IS NOT ?').get(utr, receipt)) return { problem: 'This UTR number has already been used for another registration.' }
+    let proof = null
+    if (input?.screenshotDataUrl !== undefined && input.screenshotDataUrl !== null) {
+      proof = paymentProofFromDataUrl(input.screenshotDataUrl)
+      if (!proof) return { problem: 'The payment screenshot must be a PNG, JPEG or WebP image of 2 MB or less.' }
+    } else if (requireProof) {
+      return { problem: 'Upload the payment screenshot.' }
+    }
+    return { payment: { method, utr, proof } }
+  }
 
   function currentAdmin(req) {
     const cookies = parseCookies(req.headers.cookie)
@@ -724,25 +774,37 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
 
     // 9. Spot registration
     if (url.pathname === '/api/admin/registrations' && req.method === 'POST') {
-      const input = await readJsonBody(req)
+      const input = await readJsonBody(req, maxPaymentBodyBytes)
       const problem = registrationProblem(input?.data)
       if (problem) return error(res, 400, problem)
+      const { payment, problem: paymentIssue } = readPayment(input, { requireProof: false })
+      if (paymentIssue) return error(res, 400, paymentIssue)
       const now = Date.now()
+      const data = cleanRegistration(input.data)
       const tokenHash = hashToken(randomBytes(32).toString('hex'))
       const receipt = `REG-${randomBytes(8).toString('hex').toUpperCase()}`
       db.prepare('INSERT INTO sessions VALUES (?, ?, ?)').run(tokenHash, now, now + cookieTtlSeconds * 1000)
-      db.prepare("INSERT INTO drafts (token_hash, data, step, status, receipt, revision, source, review_status, reviewed_by, reviewed_at, submitted_at) VALUES (?, ?, 2, 'submitted', ?, 0, 'spot', 'valid', ?, ?, ?)")
-        .run(tokenHash, JSON.stringify(cleanRegistration(input.data)), receipt, admin.email, now, now)
+      db.prepare("INSERT INTO drafts (token_hash, data, step, status, receipt, revision, source, review_status, reviewed_by, reviewed_at, submitted_at, payment_method, utr_number, amount_rupees, proof_mime, proof_data) VALUES (?, ?, 2, 'submitted', ?, 0, 'spot', 'valid', ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(tokenHash, JSON.stringify(data), receipt, admin.email, now, now, payment.method, payment.utr, amountFor(data), payment.proof?.mime ?? null, payment.proof?.image ?? null)
       return json(res, 201, { registration: publicRegistration(allRegistrations().find((row) => row.receipt === receipt)) })
     }
 
-    // 10. Update registration or status
+    // 10. Payment screenshot
+    const proofMatch = /^\/api\/admin\/registrations\/(REG-[A-F0-9]{16})\/payment-proof$/.exec(url.pathname)
+    if (proofMatch && req.method === 'GET') {
+      const proof = db.prepare("SELECT proof_mime, proof_data FROM drafts WHERE receipt = ? AND status = 'submitted'").get(proofMatch[1])
+      if (!proof?.proof_data) return error(res, 404, 'no payment screenshot for this registration')
+      res.writeHead(200, { 'Content-Type': proof.proof_mime, 'Content-Disposition': 'inline', 'Cache-Control': 'no-store' })
+      return res.end(Buffer.from(proof.proof_data))
+    }
+
+    // 11. Update registration or status
     const match = /^\/api\/admin\/registrations\/(REG-[A-F0-9]{16})(\/status)?$/.exec(url.pathname)
     if (match && req.method === 'PUT') {
       const [, receipt, isStatus] = match
       const existing = allRegistrations().find((row) => row.receipt === receipt)
       if (!existing) return error(res, 404, 'registration not found')
-      const input = await readJsonBody(req)
+      const input = await readJsonBody(req, maxPaymentBodyBytes)
       if (isStatus) {
         if (!reviewStatuses.includes(input?.status)) return error(res, 400, 'invalid status')
         db.prepare('UPDATE drafts SET review_status = ?, reviewed_by = ?, reviewed_at = ? WHERE receipt = ?').run(input.status, admin.email, Date.now(), receipt)
@@ -751,7 +813,16 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         if (input.revision !== existing.revision) return error(res, 409, 'This registration changed in another tab. Reload and try again.')
         const problem = registrationProblem(input.data, receipt)
         if (problem) return error(res, 400, problem)
-        db.prepare('UPDATE drafts SET data = ?, revision = revision + 1 WHERE receipt = ?').run(JSON.stringify(cleanRegistration(input.data)), receipt)
+        // Payment details change only when the console sends them; a missing screenshot keeps the current one.
+        const { payment, problem: paymentIssue } = input.paymentMethod === undefined ? {} : readPayment(input, { requireProof: false, receipt })
+        if (paymentIssue) return error(res, 400, paymentIssue)
+        const data = cleanRegistration(input.data)
+        db.prepare('UPDATE drafts SET data = ?, amount_rupees = ?, revision = revision + 1 WHERE receipt = ?').run(JSON.stringify(data), amountFor(data), receipt)
+        if (payment) {
+          db.prepare('UPDATE drafts SET payment_method = ?, utr_number = ? WHERE receipt = ?').run(payment.method, payment.utr, receipt)
+          if (payment.method === 'cash') db.prepare('UPDATE drafts SET proof_mime = NULL, proof_data = NULL WHERE receipt = ?').run(receipt)
+          else if (payment.proof) db.prepare('UPDATE drafts SET proof_mime = ?, proof_data = ? WHERE receipt = ?').run(payment.proof.mime, payment.proof.image, receipt)
+        }
       }
       return json(res, 200, { registration: publicRegistration(allRegistrations().find((row) => row.receipt === receipt)) })
     }
@@ -804,7 +875,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         if (!tokenHash) return error(res, 401, 'resume cookie required')
         const current = () => db.prepare('SELECT data, step, status, receipt, revision FROM drafts WHERE token_hash = ?').get(tokenHash)
         if (req.method === 'GET') return json(res, 200, { draft: publicDraft(current()), rules })
-        const input = await readJsonBody(req)
+        const input = await readJsonBody(req, url.pathname === '/api/registration/submit' ? maxPaymentBodyBytes : maxBodyBytes)
         if (url.pathname === '/api/registration') {
           if (!input || typeof input !== 'object' || !Number.isInteger(input.step) || input.step < 0 || input.step > 2 || !Number.isInteger(input.revision) || !Object.prototype.hasOwnProperty.call(input, 'data')) return error(res, 400, 'invalid registration update')
           const row = current()
@@ -820,10 +891,17 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         if (row.status === 'submitted') return json(res, 200, { draft: publicDraft(row) })
         if (!rules.submissionEnabled) return error(res, 403, 'submission is not enabled')
         if (input.revision !== row.revision) return json(res, 409, { error: 'revision conflict', draft: publicDraft(row) })
-        const problem = validateData(JSON.parse(row.data), rules)
+        // Checked and stored in cleaned form, so a phone typed with spaces still submits.
+        const draftData = JSON.parse(row.data)
+        // Cleaning recounts teamSize, so the size the team picked is compared with its members first.
+        const problem = registrationProblem(draftData) || (draftData.members.length + 1 !== Number(draftData.teamSize) ? 'teamSize must match the lead and members' : null)
         if (problem) return error(res, 400, problem)
+        const { payment, problem: paymentIssue } = readPayment({ ...input, paymentMethod: 'upi' }, { requireProof: true })
+        if (paymentIssue) return error(res, 400, paymentIssue)
+        const data = cleanRegistration(draftData)
         const receipt = `REG-${randomBytes(8).toString('hex').toUpperCase()}`
-        db.prepare("UPDATE drafts SET status = 'submitted', receipt = ?, submitted_at = ?, revision = revision + 1 WHERE token_hash = ? AND revision = ?").run(receipt, Date.now(), tokenHash, input.revision)
+        db.prepare("UPDATE drafts SET status = 'submitted', receipt = ?, submitted_at = ?, data = ?, payment_method = 'upi', utr_number = ?, amount_rupees = ?, proof_mime = ?, proof_data = ?, revision = revision + 1 WHERE token_hash = ? AND revision = ?")
+          .run(receipt, Date.now(), JSON.stringify(data), payment.utr, amountFor(data), payment.proof.mime, payment.proof.image, tokenHash, input.revision)
         return json(res, 200, { draft: publicDraft(current()) })
       }
       if (req.method !== 'GET') return error(res, 404, 'not found')

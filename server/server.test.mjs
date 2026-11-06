@@ -14,6 +14,11 @@ const approved = { SUBMISSION_ENABLED: 'true', REGISTRATION_MIN_TEAM_SIZE: '2', 
 const blank = () => ({ teamName: '', teamSize: '', college: '', leadName: '', email: '', phone: '', members: [] })
 const complete = () => ({ teamName: 'A', teamSize: '2', college: 'C', leadName: 'L', email: 'lead@example.com', phone: '+919876543210', members: [{ name: 'M', email: 'member@example.com', college: 'C' }] })
 
+// A real 1x1 PNG, the smallest payment screenshot the server accepts.
+const screenshot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+const newUtr = () => String(100000000000 + Math.floor(Math.random() * 899999999999))
+const upi = () => ({ utrNumber: newUtr(), screenshotDataUrl: screenshot })
+
 const randomPassword = () => `${randomBytes(16).toString('hex')}Aa1!`
 const testAdminPassword = randomPassword()
 const testAdminEmail = 'saivaibhavaluguri@gmail.com'
@@ -59,7 +64,7 @@ async function fixture(t, rules = {}) {
       })
       return { status: response.status, body: await response.json(), cookie: response.headers.get('set-cookie'), headers: response.headers }
     },
-    async submit(revision, cookie) { return this.request('POST', { revision }, cookie, {}, '/api/registration/submit') },
+    async submit(revision, cookie, payment = upi()) { return this.request('POST', { revision, ...payment }, cookie, {}, '/api/registration/submit') },
   }
 }
 
@@ -70,7 +75,7 @@ test('partial and empty drafts persist data, step, revision, and cookie authoriz
   assert.match(initial.cookie, /HttpOnly/)
   assert.match(initial.cookie, /SameSite=Strict/)
   assert.match(initial.cookie, /Max-Age=2592000/)
-  assert.deepEqual(initial.body.rules, { minTeamSize: null, maxTeamSize: null, submissionEnabled: false })
+  assert.deepEqual(initial.body.rules, { minTeamSize: null, maxTeamSize: null, feePerPerson: 649, submissionEnabled: false })
   const empty = await f.request('PUT', { data: blank(), step: 0, revision: 0 }, cookie)
   assert.equal(empty.status, 200)
   const data = { ...blank(), teamName: 'Partial', members: [{ name: 'M', email: '', college: '' }] }
@@ -243,7 +248,8 @@ test('admin login sets a hardened session cookie and logout ends it', async (t) 
   const signedIn = await f.call('POST', '/api/admin/login', { email: ' SAIVAIBHAVALUGURI@GMAIL.COM ', password: testAdminPassword })
   assert.equal(signedIn.status, 200)
   assert.deepEqual(signedIn.body.session, { email: 'saivaibhavaluguri@gmail.com', name: 'Aluguri SaiVaibhav' })
-  assert.match(signedIn.cookie, /^__Host-admin=/)
+  // Non-production (no Secure flag), so the cookie must not use the __Host- prefix browsers would reject.
+  assert.match(signedIn.cookie, /^kgrcet_admin=/)
   assert.match(signedIn.cookie, /HttpOnly/)
   assert.match(signedIn.cookie, /SameSite=Strict/)
   assert.match(signedIn.cookie, /Path=\//)
@@ -366,7 +372,7 @@ test('the console lists submitted teams only, and counts drafts without exposing
 
   const team = (await f.call('GET', '/api/registration')).cookie.split(';')[0]
   await f.call('PUT', '/api/registration', { data: complete(), step: 2, revision: 0 }, team)
-  const submitted = await f.call('POST', '/api/registration/submit', { revision: 1 }, team)
+  const submitted = await f.call('POST', '/api/registration/submit', { revision: 1, ...upi() }, team)
   assert.equal(submitted.status, 200)
   const after = await f.call('GET', '/api/admin/registrations', undefined, cookie)
   assert.equal(after.body.registrations.length, 1)
@@ -389,7 +395,7 @@ test('the console lists submitted teams only, and counts drafts without exposing
 test('spot registration works while submissions are closed and edits are validated', async (t) => {
   const f = await adminFixture(t)
   const cookie = await f.login()
-  const spot = await f.call('POST', '/api/admin/registrations', { data: { ...complete(), phone: '+91 98765 43210', teamSize: '9', extra: 'dropped' } }, cookie)
+  const spot = await f.call('POST', '/api/admin/registrations', { data: { ...complete(), phone: '+91 98765 43210', teamSize: '9', extra: 'dropped' }, paymentMethod: 'cash' }, cookie)
   assert.equal(spot.status, 201)
   const { registration } = spot.body
   assert.equal(registration.source, 'spot')
@@ -398,8 +404,8 @@ test('spot registration works while submissions are closed and edits are validat
   assert.equal(registration.data.teamSize, '2')
   assert.equal(registration.data.extra, undefined)
   assert.match(registration.receipt, /^REG-[A-F0-9]{16}$/)
-  assert.equal((await f.call('POST', '/api/admin/registrations', { data: complete() }, cookie)).status, 400)
-  assert.equal((await f.call('POST', '/api/admin/registrations', { data: { ...complete(), email: 'bad' } }, cookie)).status, 400)
+  assert.equal((await f.call('POST', '/api/admin/registrations', { data: complete(), paymentMethod: 'cash' }, cookie)).status, 400)
+  assert.equal((await f.call('POST', '/api/admin/registrations', { data: { ...complete(), email: 'bad' }, paymentMethod: 'cash' }, cookie)).status, 400)
   assert.equal((await f.call('POST', '/api/admin/registrations', {}, cookie)).status, 400)
 
   const path = `/api/admin/registrations/${registration.receipt}`
@@ -409,6 +415,63 @@ test('spot registration works while submissions are closed and edits are validat
   assert.equal(edited.body.registration.revision, 1)
   assert.equal((await f.call('PUT', path, { data: registration.data, revision: 0 }, cookie)).status, 409)
   assert.equal((await f.call('PUT', path, { data: { ...registration.data, members: [{ name: '', email: '', college: '' }] }, revision: 1 }, cookie)).status, 400)
+})
+
+test('website submission needs a unique 12-digit UTR and a real screenshot, and charges 649 per person', async (t) => {
+  const f = await adminFixture(t, makeTestAccounts(), approved)
+  const cookie = await f.login()
+  const draft = async (data) => {
+    const team = (await f.call('GET', '/api/registration')).cookie.split(';')[0]
+    await f.call('PUT', '/api/registration', { data, step: 2, revision: 0 }, team)
+    return (payment) => f.call('POST', '/api/registration/submit', { revision: 1, ...payment }, team)
+  }
+  const submit = await draft({ ...complete(), phone: '+91 98765 43210' })
+  assert.match((await submit({ screenshotDataUrl: screenshot })).body.error, /12-digit UTR/)
+  assert.match((await submit({ utrNumber: '12345', screenshotDataUrl: screenshot })).body.error, /12-digit UTR/)
+  assert.match((await submit({ utrNumber: newUtr() })).body.error, /screenshot/)
+  assert.match((await submit({ utrNumber: newUtr(), screenshotDataUrl: 'data:image/png;base64,aGVsbG8=' })).body.error, /PNG, JPEG or WebP/)
+  const utrNumber = newUtr()
+  assert.equal((await submit({ utrNumber, screenshotDataUrl: screenshot })).status, 200)
+
+  const second = await draft({ ...complete(), email: 'other@example.com', teamSize: '3', members: [{ name: 'M', email: 'm1@example.com', college: 'C' }, { name: 'N', email: 'm2@example.com', college: 'C' }] })
+  assert.match((await second({ utrNumber, screenshotDataUrl: screenshot })).body.error, /already been used/)
+  assert.equal((await second(upi())).status, 200)
+
+  const { registrations } = (await f.call('GET', '/api/admin/registrations', undefined, cookie)).body
+  const first = registrations.find((registration) => registration.utrNumber === utrNumber)
+  assert.equal(first.amount, 1298)
+  assert.equal(first.data.phone, '+919876543210')
+  assert.equal(first.paymentMethod, 'upi')
+  assert.equal(first.hasPaymentProof, true)
+  assert.equal(registrations.find((registration) => registration !== first).amount, 1947)
+
+  const proofPath = `/api/admin/registrations/${first.receipt}/payment-proof`
+  assert.equal((await f.call('GET', proofPath)).status, 401)
+  const proof = await f.call('GET', proofPath, undefined, cookie)
+  assert.equal(proof.status, 200)
+  assert.equal(proof.headers.get('content-type'), 'image/png')
+})
+
+test('spot and edited registrations record cash or UPI payments', async (t) => {
+  const f = await adminFixture(t)
+  const cookie = await f.login()
+  assert.match((await f.call('POST', '/api/admin/registrations', { data: complete(), paymentMethod: 'upi' }, cookie)).body.error, /12-digit UTR/)
+  assert.equal((await f.call('POST', '/api/admin/registrations', { data: complete(), paymentMethod: 'card' }, cookie)).status, 400)
+  const utrNumber = newUtr()
+  const spot = (await f.call('POST', '/api/admin/registrations', { data: complete(), paymentMethod: 'upi', utrNumber, screenshotDataUrl: screenshot }, cookie)).body.registration
+  assert.equal(spot.amount, 1298)
+  assert.equal(spot.utrNumber, utrNumber)
+  assert.equal(spot.hasPaymentProof, true)
+
+  const path = `/api/admin/registrations/${spot.receipt}`
+  // Saving again with the same UTR is not a duplicate of itself, and a missing screenshot keeps the current one.
+  const kept = (await f.call('PUT', path, { data: spot.data, revision: 0, paymentMethod: 'upi', utrNumber }, cookie)).body.registration
+  assert.equal(kept.hasPaymentProof, true)
+  const cash = (await f.call('PUT', path, { data: { ...spot.data, members: [...spot.data.members, { name: 'N', email: 'n@example.com', college: 'C' }] }, revision: 1, paymentMethod: 'cash' }, cookie)).body.registration
+  assert.equal(cash.paymentMethod, 'cash')
+  assert.equal(cash.utrNumber, null)
+  assert.equal(cash.hasPaymentProof, false)
+  assert.equal(cash.amount, 1947)
 })
 
 test('removing an admin account ends its existing session', async (t) => {
