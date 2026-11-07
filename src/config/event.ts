@@ -30,7 +30,7 @@ export const event = {
   registrationStatus: 'Team drafts open; official submissions are not yet open',
   participantTarget: '300+ Elite Builders',
   teamSizeLimit: 'To be announced by the organizers',
-  prizePool: 'INR 1,00,000',
+  prizePool: 'INR 2,00,000',
   prizePoolStatus: 'Provisional prize pool',
   contactEmail: 'cseh@kgrcet.edu.in',
 } as const
@@ -45,7 +45,7 @@ export const navigation = [
 ]
 
 export const keyStats = [
-  { value: '1,00,000', unit: 'INR', label: 'Provisional Prize Pool', desc: 'Final award details to be announced' },
+  { value: '2,00,000', unit: 'INR', label: 'Provisional Prize Pool', desc: 'Final award details to be announced' },
   { value: '36', unit: 'HOURS', label: 'Continuous Building', desc: 'A focused, live build window' },
   { value: '700+', unit: 'BUILDERS', label: 'National Participants', desc: 'A national student community' },
   { value: '10', unit: 'TRACKS', label: 'Challenge Fields', desc: 'Provisional problem domains' },
@@ -74,7 +74,7 @@ export const tracks: Track[] = [
 export const prizes = [
   {
     tier: 'PRIZE POOL',
-    amount: 'INR 1,00,000',
+    amount: 'INR 2,00,000',
     rank: 'PROVISIONAL VALUE',
     badge: 'AWARDS',
     highlight: true,
