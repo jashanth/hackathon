@@ -46,6 +46,7 @@ import Registration from './Registration'
 import Admin from './Admin'
 import Cosmos from './world/Cosmos'
 import { Decode, Reveal, useSurfaceEffects } from './world/fx'
+import { lite } from './world/perf'
 import collegeLogo from '../assets/kgrcet-logo.png'
 import organizerAvatar from '../assets/organizer-avatar.png'
 
@@ -393,9 +394,10 @@ function App() {
     setTheme(nextTheme)
   }
 
+  // Animating a blur on giant type is too costly for phones, so they get the rise and fade alone.
   const heroLine = (delay: number) => ({
-    initial: { opacity: 0, y: 34, filter: 'blur(14px)' },
-    animate: { opacity: 1, y: 0, filter: 'blur(0px)' },
+    initial: { opacity: 0, y: 34, ...(lite ? {} : { filter: 'blur(14px)' }) },
+    animate: { opacity: 1, y: 0, ...(lite ? {} : { filter: 'blur(0px)' }) },
     transition: { duration: 1.3, delay, ease: [0.16, 1, 0.3, 1] as const },
   })
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { downgrade, lite, lowEnd } from './perf'
 
 const vertexSource = `
 attribute vec2 position;
@@ -6,7 +7,7 @@ void main() { gl_Position = vec4(position, 0.0, 1.0); }
 `
 
 // Scene 1: a black hole, traced by bending each view ray around a unit-radius horizon.
-// Scene 2: the world on the far side of it: sky, ringed planet, spires, and a mirror sea.
+// Scene 2: the world on the far side of it: a blizzard over a frozen plain, one lamp, one walker.
 // A widening gate of light takes the view from the first scene to the second.
 const fragmentSource = `
 #ifdef GL_FRAGMENT_PRECISION_HIGH
@@ -26,7 +27,6 @@ uniform float uHorizon;
 uniform float uDrift;
 uniform float uLight;
 uniform float uDim;
-uniform float uRetreat;
 
 float hash(vec3 p) {
   p = fract(p * 0.3183099 + 0.1);
@@ -159,124 +159,103 @@ vec4 blackHole(vec2 p) {
 
 vec3 tint(vec3 dark, vec3 light) { return mix(dark, light, uLight); }
 
-float ridge(float x) {
-  return 0.55 * sin(x) + 0.3 * sin(x * 2.13 + 1.3) + 0.17 * sin(x * 4.37 + 0.7) + 0.09 * sin(x * 9.1 + 2.1) + 0.05 * sin(x * 17.3);
+// A lamp burning on the horizon: the only light in the storm.
+vec2 lampAt() { return vec2(0.0, uHorizon + 0.012); }
+
+float lampGlow(vec2 s) {
+  float d = length((s - lampAt()) * vec2(1.0, 1.7));
+  return (exp(-d * 4.2) * 0.5 + exp(-d * 22.0) * 0.75) * (1.0 - uDim * 0.45);
 }
 
-// Sharp-crested mountain profile between 0 and about 1.
-float crags(float x, float seed) {
-  float height = 0.0;
-  float amplitude = 0.56;
-  for (int i = 0; i < 4; i++) {
-    height += amplitude * (1.0 - abs(2.0 * noise(vec2(x, seed)) - 1.0));
-    x *= 2.07;
-    amplitude *= 0.48;
-  }
-  return height;
-}
-
-// Everything above the waterline. v is the height above the horizon.
-vec3 landscape(vec2 s, float v, float detail) {
-  float aspect = uResolution.x / uResolution.y;
-  float t = clamp(v / 1.15, 0.0, 1.0);
-  vec3 horizon = tint(vec3(0.96, 0.69, 0.36), vec3(1.0, 0.87, 0.68));
-  vec3 plum = tint(vec3(0.42, 0.16, 0.38), vec3(0.93, 0.79, 0.84));
-  vec3 middle = tint(vec3(0.06, 0.075, 0.29), vec3(0.72, 0.76, 0.93));
-  vec3 zenith = tint(vec3(0.007, 0.014, 0.075), vec3(0.52, 0.6, 0.86));
-  // Gold passes through plum on its way to blue, so the sunset never turns a muddy grey.
-  vec3 color = mix(horizon, plum, smoothstep(0.0, 0.13, t));
-  color = mix(color, middle, smoothstep(0.08, 0.36, t));
-  color = mix(color, zenith, smoothstep(0.26, 0.95, t));
-
-  vec2 sun = vec2(aspect * 0.27, uHorizon + 0.052);
-  float sunDistance = length(s - sun);
-  color += tint(vec3(1.0, 0.68, 0.34), vec3(1.0, 0.8, 0.5)) * (exp(-sunDistance * 4.5) * 0.42 + exp(-sunDistance * 26.0) * 0.5);
-  if (detail > 0.5) color = mix(color, vec3(1.0, 0.92, 0.72), smoothstep(0.036, 0.032, sunDistance));
-
-  if (detail > 0.5) {
-    color += starfield(normalize(vec3(s + vec2(uDrift * 0.03, 0.0), 1.0))) * (1.0 - uLight) * smoothstep(0.12, 0.55, t);
-    float band = (v - 0.66 - 0.1 * sin(s.x * 1.7 + uTime * 0.07 + uDrift * 0.3)) / 0.21;
-    float curtain = noise(vec2(s.x * 4.5 + uTime * 0.05, uTime * 0.03 + v * 1.2));
-    float aurora = exp(-band * band) * curtain * curtain * (1.0 - uDim * 0.55);
-    color = mix(color, tint(mix(vec3(0.46, 0.34, 0.95), vec3(0.88, 0.7, 0.38), smoothstep(0.55, 0.95, v)), vec3(0.56, 0.5, 0.9)), clamp(aurora * 0.6, 0.0, 1.0));
-
-    // A vast ringed planet, mostly in shadow, lit along one edge. It retreats to the corner while content is on screen.
-    vec2 planet = mix(vec2(-aspect * 0.27, uHorizon + 0.53), vec2(aspect * 0.42, 0.42), uRetreat) + vec2(uDrift * 0.01, 0.0);
-    float presence = 1.0 - uRetreat * 0.72;
-    vec2 rel = (s - planet) / 0.27;
-    vec2 tilted = vec2(rel.x * 0.94 + rel.y * 0.34, rel.y * 0.94 - rel.x * 0.34);
-    float ellipse = length(vec2(tilted.x, tilted.y * 4.0));
-    float rings = smoothstep(1.32, 1.4, ellipse) * smoothstep(2.35, 2.18, ellipse) * (0.62 + 0.26 * sin(ellipse * 31.0) + 0.12 * sin(ellipse * 67.0));
-    vec3 ringColor = tint(vec3(0.95, 0.8, 0.54), vec3(0.58, 0.46, 0.24));
-    float distanceToPlanet = length(rel);
-    vec3 toSun = normalize(vec3(sun - planet, 0.25));
-    if (tilted.y > 0.0) color = mix(color, ringColor, rings * 0.55 * presence);
-    if (distanceToPlanet < 1.0) {
-      vec3 normal = vec3(rel, sqrt(max(1.0 - distanceToPlanet * distanceToPlanet, 0.0)));
-      float lit = clamp(dot(normal, toSun), 0.0, 1.0);
-      float bands = 0.5 + 0.5 * sin(tilted.y * 11.0 + noise(tilted * 2.5) * 2.5);
-      vec3 surface = tint(mix(vec3(0.5, 0.36, 0.17), vec3(0.84, 0.68, 0.4), bands), mix(vec3(0.72, 0.64, 0.48), vec3(0.9, 0.84, 0.68), bands));
-      vec3 shaded = surface * lit * lit * mix(1.15, 0.55, uLight) + tint(vec3(0.006, 0.008, 0.032), vec3(0.54, 0.55, 0.7));
-      float limb = pow(1.0 - normal.z, 5.0) * smoothstep(-0.2, 0.7, dot(normalize(vec3(rel, 0.0)), toSun));
-      shaded += tint(vec3(1.0, 0.82, 0.5), vec3(0.8, 0.62, 0.3)) * limb * 0.85;
-      color = mix(color, shaded, smoothstep(1.0, 0.99, distanceToPlanet) * presence);
-    } else {
-      float limbGlow = exp(-(distanceToPlanet - 1.0) * 16.0) * smoothstep(-0.2, 0.7, dot(normalize(vec3(rel, 0.0)), toSun));
-      color += tint(vec3(0.95, 0.72, 0.4), vec3(0.3, 0.22, 0.08)) * limbGlow * 0.38 * presence;
-    }
-    if (tilted.y <= 0.0) color = mix(color, ringColor, rings * 0.7 * presence);
-  }
-
-  // Three depths of land: misty mountains, a skyline of spires, the dark near shore.
-  float far = 0.006 + 0.1 * pow(crags(s.x * 1.5 + uDrift * 0.02 + 3.0, 1.0), 2.2);
-  if (v < far + 0.004) {
-    vec3 rock = tint(vec3(0.04, 0.042, 0.14), vec3(0.62, 0.63, 0.82));
-    vec3 misted = mix(rock, horizon, smoothstep(far * 0.8, -0.005, v) * 0.72);
-    misted += tint(vec3(1.0, 0.7, 0.36), vec3(0.2, 0.14, 0.04)) * exp(-(far - v) * 130.0) * exp(-abs(s.x - sun.x) * 1.3) * 0.5;
-    color = mix(color, misted, smoothstep(far + 0.002, far - 0.002, v));
-  }
-
-  float across = s.x * 62.0 + uDrift * 0.2;
-  float id = floor(across);
-  float offset = fract(across) - 0.5;
-  float seed = hash(vec3(id, 3.0, 1.0));
-  float cluster = smoothstep(-0.1, 0.9, sin(s.x * 2.3 - 1.4) + 0.45 * sin(s.x * 6.7));
-  float spire = 0.012 + (0.022 * seed + pow(seed, 7.0) * 0.27) * (0.25 + 0.75 * cluster);
-  if (v < spire + 0.003) {
-    float width = (0.14 + 0.3 * seed) * (1.0 - clamp(v / spire, 0.0, 1.0) * 0.86);
-    float inSpire = smoothstep(width + 0.05, width - 0.05, abs(offset)) * smoothstep(spire + 0.002, spire - 0.002, v);
-    float mist = smoothstep(0.05, 0.0, v);
-    color = mix(color, mix(tint(vec3(0.01, 0.013, 0.05), vec3(0.25, 0.27, 0.5)), horizon, mist * 0.3), inSpire);
-    float row = floor(v * 420.0);
-    float windowLit = step(0.8, hash(vec3(id, row, 2.0))) * step(0.5, fract(v * 420.0));
-    color += tint(vec3(1.0, 0.78, 0.44), vec3(0.24, 0.16, 0.04)) * windowLit * inSpire * 0.5;
-  }
-  if (seed > 0.86) {
-    vec2 tip = vec2((id + 0.5 - uDrift * 0.2) / 62.0, uHorizon + spire);
-    color += tint(vec3(1.0, 0.84, 0.54), vec3(0.42, 0.3, 0.08)) * exp(-length(s - tip) * 480.0) * 0.9;
-  }
-
-  float near = 0.008 + 0.018 * pow(crags(s.x * 4.2 + uDrift * 0.2 + 9.0, 5.0), 1.5);
-  color = mix(color, tint(vec3(0.004, 0.006, 0.026), vec3(0.2, 0.22, 0.45)), smoothstep(near + 0.002, near - 0.002, v));
+// Storm sky above the ice. v is the height above the horizon.
+vec3 sky(vec2 s, float v) {
+  float t = clamp(v / 1.1, 0.0, 1.0);
+  vec3 haze = tint(vec3(0.36, 0.5, 0.7), vec3(0.86, 0.92, 0.98));
+  vec3 steel = tint(vec3(0.08, 0.17, 0.34), vec3(0.66, 0.76, 0.9));
+  vec3 zenith = tint(vec3(0.01, 0.025, 0.075), vec3(0.47, 0.58, 0.78));
+  vec3 color = mix(haze, steel, smoothstep(0.0, 0.2, t));
+  color = mix(color, zenith, smoothstep(0.16, 0.9, t));
+  float cloud = fbm(vec2(s.x * 1.4 + uTime * 0.03 + uDrift * 0.05, v * 2.6 - uTime * 0.008));
+  color *= mix(0.72 + 0.5 * cloud, 0.9 + 0.18 * cloud, uLight);
   return color;
 }
 
-// The world beyond the horizon: land and sky above, the same scene mirrored in moving water below.
+// Frozen plain: long drifts of snow over dark, glassy ice, seen in perspective.
+vec3 ice(vec2 s, float depth) {
+  vec2 lamp = lampAt();
+  float z = 1.0 / (depth + 0.008);
+  vec2 g = vec2(s.x * z, z + uDrift * 1.5);
+  float n = fbm(vec2(g.x * 0.11, g.y * 0.5)) + 0.22 * noise(vec2(g.x * 0.45, g.y * 2.0));
+  float snow = smoothstep(0.52, 0.66, n);
+  float lit = exp(-length((s - lamp) * vec2(0.85, 2.4)) * 2.0);
+  vec3 dark = tint(vec3(0.015, 0.045, 0.12), vec3(0.5, 0.6, 0.76));
+  vec3 drift = tint(vec3(0.46, 0.6, 0.82), vec3(0.94, 0.97, 1.0));
+  vec3 color = mix(dark, drift, snow) * mix(0.32 + 1.25 * lit, 0.82 + 0.22 * lit, uLight);
+  // The lamp lays a bright path across the bare ice.
+  float path = exp(-abs(s.x - lamp.x) / (0.012 + depth * 0.55)) * exp(-depth * 2.5);
+  color += tint(vec3(0.62, 0.8, 1.0), vec3(0.3, 0.36, 0.46)) * path * (1.0 - snow) * 0.4;
+  color = mix(color, tint(vec3(0.5, 0.64, 0.82), vec3(0.88, 0.93, 0.98)), smoothstep(0.07, 0.0, depth) * 0.85);
+  return color * mix(1.0, mix(0.38, 0.84, uLight), smoothstep(0.08, 0.6, depth));
+}
+
+float segment(vec2 p, vec2 a, vec2 b) {
+  vec2 pa = p - a;
+  vec2 ba = b - a;
+  return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0));
+}
+
+// A lone walker in front of the lamp, leaning into the wind. Signed distance in figure heights.
+float walker(vec2 p) {
+  float d = length(p - vec2(0.07, 0.9)) - 0.1;
+  d = min(d, segment(p, vec2(0.0, 0.46), vec2(0.06, 0.76)) - 0.12);
+  d = min(d, segment(p, vec2(-0.06, 0.62), vec2(-0.08, 0.78)) - 0.1);
+  d = min(d, segment(p, vec2(0.0, 0.46), vec2(-0.14, 0.02)) - 0.055);
+  d = min(d, segment(p, vec2(0.02, 0.46), vec2(0.15, 0.03)) - 0.055);
+  d = min(d, segment(p, vec2(0.06, 0.7), vec2(0.2, 0.5)) - 0.04);
+  return d;
+}
+
+// Wind-driven snow as thin streaks. Each cell holds at most one, drifting right and slightly down.
+float streaks(vec2 s, float scale, float speed, float seed) {
+  vec2 q = vec2(s.x * 0.16 + s.y * 0.05, s.y) * scale + vec2(-uTime * speed, uTime * speed * 0.9);
+  vec2 id = floor(q);
+  vec2 f = fract(q);
+  float r = hash(vec3(id, seed));
+  if (r < 0.5) return 0.0;
+  float reach = 0.16 + fract(r * 3.1) * 0.2;
+  float across = abs(f.y - (0.15 + fract(r * 13.7) * 0.7));
+  float along = abs(f.x - (0.25 + fract(r * 7.3) * 0.5));
+  return smoothstep(0.07, 0.0, across) * smoothstep(reach, reach * 0.25, along) * (0.35 + fract(r * 29.0) * 0.65);
+}
+
+// Large out-of-focus flakes close to the eye, smeared sideways by the wind.
+float flakes(vec2 s, float scale, float speed, float seed) {
+  vec2 q = s * scale + vec2(-uTime * speed, uTime * speed * 0.3);
+  vec2 id = floor(q);
+  vec2 f = fract(q);
+  float r = hash(vec3(id, seed));
+  if (r < 0.72) return 0.0;
+  vec2 center = 0.25 + vec2(fract(r * 11.0), fract(r * 17.0)) * 0.5;
+  return smoothstep(0.22, 0.04, length((f - center) * vec2(0.55, 1.0))) * (0.4 + fract(r * 5.0) * 0.6);
+}
+
+// The world beyond the horizon: a blizzard over a frozen plain, lit by a single lamp.
 vec3 world(vec2 s) {
   float v = s.y - uHorizon;
-  if (v >= 0.0) return landscape(s, v, 1.0);
-  float depth = -v;
-  float aspect = uResolution.x / uResolution.y;
-  float wave = noise(vec2(s.x * 16.0, depth * 180.0 / (1.0 + depth * 6.0) - uTime * 0.3)) - 0.5;
-  vec2 mirrored = vec2(s.x + wave * (0.004 + depth * 0.07), uHorizon + depth * 1.05 + abs(wave) * depth * 0.1);
-  vec3 color = landscape(mirrored, mirrored.y - uHorizon, 0.0);
-  color = mix(color, tint(vec3(0.004, 0.009, 0.05), vec3(0.62, 0.66, 0.86)), clamp(0.3 + depth * 2.1, 0.0, 0.9));
-  float path = exp(-abs(s.x - aspect * 0.27) / (0.035 + depth * 0.42));
-  // Stretched noise makes the sparkle read as flat streaks lying on the water.
-  float rows = depth * 300.0 / (1.0 + depth * 5.0) - uTime * 0.7;
-  float glint = pow(noise(vec2(s.x * 11.0 + wave, rows)) * noise(vec2(s.x * 27.0, rows * 1.7 + 4.0)), 2.0) * 16.0;
-  color += tint(vec3(1.0, 0.76, 0.42), vec3(1.0, 0.92, 0.72)) * path * glint * 0.42;
-  return color;
+  vec3 color = v >= 0.0 ? sky(s, v) : ice(s, -v);
+  color += tint(vec3(0.72, 0.87, 1.0), vec3(0.95, 0.98, 1.0)) * lampGlow(s) * mix(1.0, 0.45, uLight);
+
+  float height = 0.032;
+  vec2 lamp = lampAt();
+  float figure = walker((s - vec2(lamp.x - 0.004, uHorizon - 0.002)) / height);
+  float edge = 1.4 / (uResolution.y * height);
+  color = mix(color, tint(vec3(0.1, 0.14, 0.22), vec3(0.16, 0.2, 0.3)), smoothstep(edge, -edge, figure) * 0.9);
+
+  float drift = s.y * 0.3;
+  float fall = streaks(s, 26.0, 0.55, 1.0) + streaks(s + 3.7, 16.0, 0.4, 2.0) * 0.8 + streaks(s - 1.3, 40.0, 0.7, 3.0) * 0.5;
+  float near = flakes(s + drift, 5.0, 0.6, 4.0) + flakes(s - 2.1, 8.0, 0.8, 5.0) * 0.7;
+  float amount = clamp(fall * 0.42 + near * 0.22, 0.0, 1.0) * (1.0 - uDim * 0.5);
+  return mix(color, tint(vec3(0.74, 0.84, 1.0), vec3(1.0, 1.0, 1.0)), amount * mix(1.0, 0.7, uLight));
 }
 
 void main() {
@@ -363,7 +342,6 @@ export default function Cosmos({ theme, fixed = false }: { theme: 'light' | 'dar
     let program: WebGLProgram | null = null
     let uniforms: Record<string, Uniform> = {}
     let frame = 0
-    let tick = 0
     let lastFrame = 0
     let slowFrames = 0
     let fastFrames = 0
@@ -371,7 +349,9 @@ export default function Cosmos({ theme, fixed = false }: { theme: 'light' | 'dar
     let settled = false
     let lightMix = themeRef.current === 'light' ? 1 : 0
     const pointer = { x: 0, y: 0, targetX: 0, targetY: 0 }
-    const maxScale = Math.min(window.devicePixelRatio || 1, 1.5) * (window.innerWidth < 820 ? 0.7 : 0.85)
+    // Canvas pixels per CSS pixel. The scene is soft, so phones and weak GPUs lose little by rendering below screen resolution.
+    const maxScale = lowEnd ? 0.5 : lite ? 0.65 : Math.min(window.devicePixelRatio || 1, 1.5) * 0.85
+    const minScale = lite ? 0.32 : 0.42
     let scale = maxScale
 
     const setup = () => {
@@ -389,7 +369,7 @@ export default function Cosmos({ theme, fixed = false }: { theme: 'light' | 'dar
       const position = gl.getAttribLocation(program, 'position')
       gl.enableVertexAttribArray(position)
       gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0)
-      for (const name of ['uResolution', 'uCenter', 'uPointer', 'uTime', 'uDistance', 'uTilt', 'uIris', 'uHorizon', 'uDrift', 'uLight', 'uDim', 'uRetreat']) {
+      for (const name of ['uResolution', 'uCenter', 'uPointer', 'uTime', 'uDistance', 'uTilt', 'uIris', 'uHorizon', 'uDrift', 'uLight', 'uDim']) {
         uniforms[name] = gl.getUniformLocation(program, name)
       }
       return true
@@ -437,36 +417,42 @@ export default function Cosmos({ theme, fixed = false }: { theme: 'light' | 'dar
       gl.uniform1f(uniforms.uDrift, beyond)
       // The camera rises out of the gate, lifts over the page content, and comes back down at the end.
       const lifted = -0.29 + 0.17 * smooth(0.6, 1, dive) - 0.6 * smooth(0, 1, beyond)
-      gl.uniform1f(uniforms.uHorizon, lifted + (-0.41 - lifted) * landing)
+      // At the end of the page the horizon settles on the footer's divider, so the walker stands beneath the credits.
+      const divider = landing > 0 ? document.querySelector('.footer-divider')?.getBoundingClientRect() : undefined
+      const ground = divider ? Math.min(Math.max(0.5 - divider.top / height, -0.6), 0.2) : -0.41
+      gl.uniform1f(uniforms.uHorizon, lifted + (ground - lifted) * landing)
       gl.uniform1f(uniforms.uDim, smooth(0, 0.7, beyond) * (1 - landing * 0.55))
-      gl.uniform1f(uniforms.uRetreat, smooth(0, 0.7, beyond))
       gl.uniform1f(uniforms.uLight, lightMix)
       gl.drawArrays(gl.TRIANGLES, 0, 3)
     }
 
     // Trades resolution for frame rate, so slower machines keep moving instead of stuttering.
-    const adapt = (delta: number) => {
+    // A device still too slow at the lowest resolution sheds the interface's costlier effects as well.
+    const adapt = (delta: number, interval: number) => {
+      const budget = Math.max(interval, 1000 / 60)
       measured += 1
-      if (delta > 30) slowFrames += 1
-      else if (delta < 18) fastFrames += 1
+      if (delta > budget * 1.8) slowFrames += 1
+      else if (delta < budget * 1.15) fastFrames += 1
       if (measured < 40) return
-      if (slowFrames > 20 && scale > 0.42) scale = Math.max(0.42, scale * 0.78)
-      else if (fastFrames > 38 && scale < maxScale) scale = Math.min(maxScale, scale * 1.08)
+      if (slowFrames > 20) {
+        if (scale > minScale) scale = Math.max(minScale, scale * 0.78)
+        else downgrade()
+      } else if (fastFrames > 38 && scale < maxScale) scale = Math.min(maxScale, scale * 1.08)
       measured = slowFrames = fastFrames = 0
     }
 
     const loop = (time: number) => {
       frame = requestAnimationFrame(loop)
-      if (lastFrame) adapt(time - lastFrame)
-      lastFrame = time
       const targetLight = themeRef.current === 'light' ? 1 : 0
       lightMix += (targetLight - lightMix) * 0.07
       if (Math.abs(targetLight - lightMix) < 0.002) lightMix = targetLight
       pointer.x += (pointer.targetX - pointer.x) * 0.04
       pointer.y += (pointer.targetY - pointer.y) * 0.04
-      tick += 1
-      // Once arrived the world moves slowly, so half the frames are enough.
-      if (settled && tick % 2) return
+      // Phones and weak machines, and anyone who has arrived in the slow-moving world, get 30 frames a second.
+      const interval = lite || settled ? 1000 / 30 : 0
+      if (lastFrame && time - lastFrame < interval - 4) return
+      if (lastFrame) adapt(time - lastFrame, interval)
+      lastFrame = time
       render(time)
     }
 

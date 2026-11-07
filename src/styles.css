@@ -853,5 +853,33 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   --foil: linear-gradient(105deg, #1e2270 0%, #2c3191 30%, #94762f 55%, #2c3191 75%, #1e2270 100%);
   --btn-text: #f8f6ec;
 }
-:root[data-theme='dark'][data-realm='world'] .footer-container { text-shadow: 0 1px 16px rgba(5, 8, 26, .95), 0 0 4px rgba(5, 8, 26, .6); }
+/* Footer over the ice: frost-white copy and pale-blue labels, shadowed so the lamp's glow never washes them out. */
+:root[data-theme='dark'][data-realm='world'] .footer-container { text-shadow: 0 1px 2px rgba(3, 8, 24, .9), 0 2px 18px rgba(3, 8, 24, .95); }
+:root[data-theme='dark'][data-realm='world'] .footer-brand-title,
+:root[data-theme='dark'][data-realm='world'] .footer-venue-name { color: #f4f8ff; }
+:root[data-theme='dark'][data-realm='world'] .footer-brand-year { color: #a9d8ff; }
+:root[data-theme='dark'][data-realm='world'] .footer-col-header { color: #8fc9f5; }
+:root[data-theme='dark'][data-realm='world'] .footer-tagline,
+:root[data-theme='dark'][data-realm='world'] .footer-developer-credit,
+:root[data-theme='dark'][data-realm='world'] .footer-venue-address { color: #dbe6f7; }
+:root[data-theme='dark'][data-realm='world'] .footer-copyright,
+:root[data-theme='dark'][data-realm='world'] .footer-admin-link { color: #b8cbe6; }
+:root[data-theme='dark'][data-realm='world'] .footer-admin-link:hover { color: #f4f8ff; }
+:root[data-theme='dark'][data-realm='world'] .footer-divider { background: rgba(169, 216, 255, .35); }
+:root[data-theme='light'][data-realm='world'] .footer-container { text-shadow: 0 1px 12px rgba(240, 246, 255, .9); }
+:root[data-theme='light'][data-realm='world'] .footer-brand-year,
+:root[data-theme='light'][data-realm='world'] .footer-col-header { color: #1d4f8f; }
+:root[data-theme='light'][data-realm='world'] .footer-tagline,
+:root[data-theme='light'][data-realm='world'] .footer-developer-credit,
+:root[data-theme='light'][data-realm='world'] .footer-venue-address { color: #1c2748; }
+
+/* ==========================================================================
+   Lite rendering for phones and slow machines (set by world/perf.ts)
+   ========================================================================== */
+/* Blurring the moving backdrop re-renders every frame; near-opaque surfaces read the same without it. */
+:root[data-perf='lite'] *, :root[data-perf='lite'] *::before, :root[data-perf='lite'] *::after { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+:root[data-perf='lite'] body { --surface: var(--surface-strong); }
+:root[data-perf='lite'] .grain-overlay, :root[data-perf='lite'] .grid-overlay { display: none; }
+/* These animate paint (gradient position, conic angle) rather than transforms, so they repaint every frame. */
+:root[data-perf='lite'] .hero-title-gradient, :root[data-perf='lite'] .champion .prize-amount, :root[data-perf='lite'] .prize-card.champion { animation: none; }
 :root[data-theme='light'][data-realm='world'] .btn-primary-luxury, :root[data-theme='light'][data-realm='world'] .btn-header-register { background: #171b57; box-shadow: 0 10px 30px -12px rgba(23, 27, 87, .6); }
