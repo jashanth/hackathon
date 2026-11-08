@@ -25,6 +25,7 @@ import {
   Sun,
   Terminal,
   Trophy,
+  User,
   Users,
   Wifi,
   X,
@@ -48,7 +49,6 @@ import Cosmos from './world/Cosmos'
 import { Decode, Reveal, useSurfaceEffects } from './world/fx'
 import { lite } from './world/perf'
 import collegeLogo from '../assets/kgrcet-logo.png'
-import organizerAvatar from '../assets/organizer-avatar.png'
 
 interface CountdownState {
   days: number
@@ -824,7 +824,11 @@ function App() {
                     </> : group.entries.map((member, mIdx) => (
                       <div className="member-card" key={mIdx}>
                         <div className="member-avatar">
-                          <img src={member.avatar || organizerAvatar} alt={member.name} className="member-avatar-img" />
+                          {member.avatar ? (
+                            <img src={member.avatar} alt={member.name} className="member-avatar-img" />
+                          ) : (
+                            <User size={20} className="member-avatar-icon" />
+                          )}
                         </div>
                         <div className="member-info">
                           <h5>{member.name}</h5>

@@ -7,7 +7,7 @@ void main() { gl_Position = vec4(position, 0.0, 1.0); }
 `
 
 // Scene 1: a black hole, traced by bending each view ray around a unit-radius horizon.
-// Scene 2: the world on the far side of it: a blizzard over a frozen plain, one lamp, one walker.
+// Scene 2: the world on the far side of it: warm sunset gradient over a plain, one lamp, one walker.
 // A widening gate of light takes the view from the first scene to the second.
 const fragmentSource = `
 #ifdef GL_FRAGMENT_PRECISION_HIGH
@@ -159,7 +159,7 @@ vec4 blackHole(vec2 p) {
 
 vec3 tint(vec3 dark, vec3 light) { return mix(dark, light, uLight); }
 
-// A lamp burning on the horizon: the only light in the storm.
+// A lamp burning on the horizon: warm beacon on the far side of the gate.
 vec2 lampAt() { return vec2(0.0, uHorizon + 0.012); }
 
 float lampGlow(vec2 s) {
@@ -167,20 +167,23 @@ float lampGlow(vec2 s) {
   return (exp(-d * 4.2) * 0.5 + exp(-d * 22.0) * 0.75) * (1.0 - uDim * 0.45);
 }
 
-// Storm sky above the ice. v is the height above the horizon.
+// Sky above the horizon, using the warm sunset gradient from the reference world. v is the height above the horizon.
 vec3 sky(vec2 s, float v) {
-  float t = clamp(v / 1.1, 0.0, 1.0);
-  vec3 haze = tint(vec3(0.36, 0.5, 0.7), vec3(0.86, 0.92, 0.98));
-  vec3 steel = tint(vec3(0.08, 0.17, 0.34), vec3(0.66, 0.76, 0.9));
-  vec3 zenith = tint(vec3(0.01, 0.025, 0.075), vec3(0.47, 0.58, 0.78));
-  vec3 color = mix(haze, steel, smoothstep(0.0, 0.2, t));
-  color = mix(color, zenith, smoothstep(0.16, 0.9, t));
+  float t = clamp(v / 1.15, 0.0, 1.0);
+  vec3 horizon = tint(vec3(0.96, 0.69, 0.36), vec3(1.0, 0.87, 0.68));
+  vec3 plum = tint(vec3(0.42, 0.16, 0.38), vec3(0.93, 0.79, 0.84));
+  vec3 middle = tint(vec3(0.06, 0.075, 0.29), vec3(0.72, 0.76, 0.93));
+  vec3 zenith = tint(vec3(0.007, 0.014, 0.075), vec3(0.52, 0.6, 0.86));
+  // Gold passes through plum on its way to blue, so the sunset never turns a muddy grey.
+  vec3 color = mix(horizon, plum, smoothstep(0.0, 0.13, t));
+  color = mix(color, middle, smoothstep(0.08, 0.36, t));
+  color = mix(color, zenith, smoothstep(0.26, 0.95, t));
   float cloud = fbm(vec2(s.x * 1.4 + uTime * 0.03 + uDrift * 0.05, v * 2.6 - uTime * 0.008));
   color *= mix(0.72 + 0.5 * cloud, 0.9 + 0.18 * cloud, uLight);
   return color;
 }
 
-// Frozen plain: long drifts of snow over dark, glassy ice, seen in perspective.
+// Plain seen in perspective, reflecting the warm sunset horizon.
 vec3 ice(vec2 s, float depth) {
   vec2 lamp = lampAt();
   float z = 1.0 / (depth + 0.008);
@@ -188,13 +191,13 @@ vec3 ice(vec2 s, float depth) {
   float n = fbm(vec2(g.x * 0.11, g.y * 0.5)) + 0.22 * noise(vec2(g.x * 0.45, g.y * 2.0));
   float snow = smoothstep(0.52, 0.66, n);
   float lit = exp(-length((s - lamp) * vec2(0.85, 2.4)) * 2.0);
-  vec3 dark = tint(vec3(0.015, 0.045, 0.12), vec3(0.5, 0.6, 0.76));
-  vec3 drift = tint(vec3(0.46, 0.6, 0.82), vec3(0.94, 0.97, 1.0));
+  vec3 dark = tint(vec3(0.004, 0.009, 0.05), vec3(0.62, 0.66, 0.86));
+  vec3 drift = tint(vec3(0.42, 0.16, 0.38), vec3(0.93, 0.79, 0.84));
   vec3 color = mix(dark, drift, snow) * mix(0.32 + 1.25 * lit, 0.82 + 0.22 * lit, uLight);
-  // The lamp lays a bright path across the bare ice.
+  // The lamp lays a bright warm path across the plain.
   float path = exp(-abs(s.x - lamp.x) / (0.012 + depth * 0.55)) * exp(-depth * 2.5);
-  color += tint(vec3(0.62, 0.8, 1.0), vec3(0.3, 0.36, 0.46)) * path * (1.0 - snow) * 0.4;
-  color = mix(color, tint(vec3(0.5, 0.64, 0.82), vec3(0.88, 0.93, 0.98)), smoothstep(0.07, 0.0, depth) * 0.85);
+  color += tint(vec3(1.0, 0.76, 0.42), vec3(1.0, 0.92, 0.72)) * path * (1.0 - snow) * 0.45;
+  color = mix(color, tint(vec3(0.96, 0.69, 0.36), vec3(1.0, 0.87, 0.68)), smoothstep(0.07, 0.0, depth) * 0.85);
   return color * mix(1.0, mix(0.38, 0.84, uLight), smoothstep(0.08, 0.6, depth));
 }
 
@@ -215,47 +218,19 @@ float walker(vec2 p) {
   return d;
 }
 
-// Wind-driven snow as thin streaks. Each cell holds at most one, drifting right and slightly down.
-float streaks(vec2 s, float scale, float speed, float seed) {
-  vec2 q = vec2(s.x * 0.16 + s.y * 0.05, s.y) * scale + vec2(-uTime * speed, uTime * speed * 0.9);
-  vec2 id = floor(q);
-  vec2 f = fract(q);
-  float r = hash(vec3(id, seed));
-  if (r < 0.5) return 0.0;
-  float reach = 0.16 + fract(r * 3.1) * 0.2;
-  float across = abs(f.y - (0.15 + fract(r * 13.7) * 0.7));
-  float along = abs(f.x - (0.25 + fract(r * 7.3) * 0.5));
-  return smoothstep(0.07, 0.0, across) * smoothstep(reach, reach * 0.25, along) * (0.35 + fract(r * 29.0) * 0.65);
-}
-
-// Large out-of-focus flakes close to the eye, smeared sideways by the wind.
-float flakes(vec2 s, float scale, float speed, float seed) {
-  vec2 q = s * scale + vec2(-uTime * speed, uTime * speed * 0.3);
-  vec2 id = floor(q);
-  vec2 f = fract(q);
-  float r = hash(vec3(id, seed));
-  if (r < 0.72) return 0.0;
-  vec2 center = 0.25 + vec2(fract(r * 11.0), fract(r * 17.0)) * 0.5;
-  return smoothstep(0.22, 0.04, length((f - center) * vec2(0.55, 1.0))) * (0.4 + fract(r * 5.0) * 0.6);
-}
-
-// The world beyond the horizon: a blizzard over a frozen plain, lit by a single lamp.
+// The world beyond the horizon: illuminated by the warm golden beacon and reference gradient.
 vec3 world(vec2 s) {
   float v = s.y - uHorizon;
   vec3 color = v >= 0.0 ? sky(s, v) : ice(s, -v);
-  color += tint(vec3(0.72, 0.87, 1.0), vec3(0.95, 0.98, 1.0)) * lampGlow(s) * mix(1.0, 0.45, uLight);
+  color += tint(vec3(1.0, 0.68, 0.34), vec3(1.0, 0.8, 0.5)) * lampGlow(s) * mix(1.0, 0.45, uLight);
 
   float height = 0.032;
   vec2 lamp = lampAt();
   float figure = walker((s - vec2(lamp.x - 0.004, uHorizon - 0.002)) / height);
   float edge = 1.4 / (uResolution.y * height);
-  color = mix(color, tint(vec3(0.1, 0.14, 0.22), vec3(0.16, 0.2, 0.3)), smoothstep(edge, -edge, figure) * 0.9);
+  color = mix(color, tint(vec3(0.01, 0.013, 0.05), vec3(0.25, 0.27, 0.5)), smoothstep(edge, -edge, figure) * 0.9);
 
-  float drift = s.y * 0.3;
-  float fall = streaks(s, 26.0, 0.55, 1.0) + streaks(s + 3.7, 16.0, 0.4, 2.0) * 0.8 + streaks(s - 1.3, 40.0, 0.7, 3.0) * 0.5;
-  float near = flakes(s + drift, 5.0, 0.6, 4.0) + flakes(s - 2.1, 8.0, 0.8, 5.0) * 0.7;
-  float amount = clamp(fall * 0.42 + near * 0.22, 0.0, 1.0) * (1.0 - uDim * 0.5);
-  return mix(color, tint(vec3(0.74, 0.84, 1.0), vec3(1.0, 1.0, 1.0)), amount * mix(1.0, 0.7, uLight));
+  return color;
 }
 
 void main() {
