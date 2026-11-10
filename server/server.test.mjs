@@ -786,6 +786,30 @@ test('all responses carry required security headers and admin endpoints carry no
   assert.match(res.headers.get('strict-transport-security'), /max-age=/)
 })
 
+test('admin registrations stream requires authentication and serves text/event-stream when authenticated', async (t) => {
+  const f = await adminFixture(t)
+  const unauth = await f.call('GET', '/api/admin/registrations/stream')
+  assert.equal(unauth.status, 401)
+
+  const cookie = await f.login('saivaibhavaluguri@gmail.com', testAdminPassword)
+  const controller = new AbortController()
+  const res = await fetch(`${f.base}/api/admin/registrations/stream`, {
+    headers: { Cookie: cookie },
+    signal: controller.signal,
+  })
+  assert.equal(res.status, 200)
+  assert.match(res.headers.get('content-type') || '', /text\/event-stream/)
+  assert.equal(res.headers.get('x-accel-buffering'), 'no')
+
+  const reader = res.body.getReader()
+  const { value } = await reader.read()
+  const text = new TextDecoder().decode(value)
+  assert.match(text, /connected/)
+
+  reader.releaseLock()
+  controller.abort()
+})
+
 test('password strength validation enforces 12+ chars, no names/emails, and rejects common passwords', () => {
   assert.match(validatePasswordStrength('short'), /at least 12 characters/)
   assert.match(validatePasswordStrength('saivaibhav1234'), /fragment/)

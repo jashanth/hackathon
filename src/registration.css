@@ -16,7 +16,9 @@
 .registration-save p[role='alert'] { color: var(--danger); }
 .registration-save button { margin-top: 10px; }
 .registration-panel { position: relative; padding: clamp(22px, 4vw, 46px); background: var(--surface-solid); border: 1px solid var(--line); }
-.registration h2 { margin: 0 0 8px; font: 300 clamp(36px, 4.2vw, 52px)/1.1 var(--font-display); }
+.registration h2 { margin: 0 0 8px; font: 300 clamp(36px, 4.2vw, 52px)/1.1 var(--font-display); outline: none; caret-color: transparent; }
+.registration h2:focus,
+.registration h2:focus-visible { outline: none; box-shadow: none; }
 .registration-fields { padding: 0; margin: 0; border: 0; min-width: 0; }
 .registration-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
 .registration .form-group { min-width: 0; align-content: start; }
@@ -35,7 +37,7 @@
   color: var(--ink);
 }
 .registration small { font-size: 13px; color: var(--ink-soft); line-height: 1.5; }
-.registration :is(input, select, button, a, h2):focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
+.registration :is(input, select, button, a):focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
 .registration [aria-invalid='true'] { border-color: var(--danger); }
 .registration-error { display: block; color: var(--danger); font-size: 13.5px; }
 .registration-members { margin-top: 24px; }

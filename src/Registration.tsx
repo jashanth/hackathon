@@ -504,6 +504,13 @@ export default function Registration() {
       local.current = result.draft
       setDraft(result.draft)
       setSaveStatus('Submission confirmed by server.')
+      try {
+        const bc = new BroadcastChannel('kgrcet_hackathon')
+        bc.postMessage({ type: 'registration_updated' })
+        bc.close()
+      } catch {
+        // BroadcastChannel unsupported
+      }
       requestAnimationFrame(() => heading.current?.focus())
     } catch (error) {
       // The server rejected the details (for example a UTR already used), so the team can correct them and submit again.
@@ -637,7 +644,7 @@ export default function Registration() {
 
             {submitted ? (
               <section className="registration-panel">
-                <h2 tabIndex={-1} ref={heading}>Payment under verification</h2>
+                <h2 tabIndex={-1} ref={heading} className="registration-confirmed-title">Payment under verification</h2>
                 <p>Your registration for <strong>{data.teamName}</strong> is recorded. The organizers will check your payment against the UTR and screenshot you sent, then confirm your team.</p>
                 <p>Save your receipt: <strong className="registration-receipt">{draft.receipt || 'Not provided by server'}</strong></p>
                 <a href="/" className="btn-secondary-luxury">Back to overview</a>

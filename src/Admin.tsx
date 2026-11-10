@@ -490,17 +490,86 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
 
   useEffect(() => {
     let active = true
-    api<{ registrations: AdminRegistration[]; draftsInProgress: number; rules: Rules }>('registrations').then((result) => {
-      if (!active) return
-      setRegistrations(result.registrations)
-      setDraftsInProgress(result.draftsInProgress)
-      setRules(result.rules)
-    }).catch((loadError: unknown) => {
-      if (!active) return
-      if (loadError instanceof ApiError && loadError.status === 401) onUnauthorized()
-      else setError(errorText(loadError, 'Could not load registrations.'))
-    }).finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
+
+    const fetchRegistrations = (silent = false) => {
+      if (!silent) setLoading(true)
+      return api<{ registrations: AdminRegistration[]; draftsInProgress: number; rules: Rules }>('registrations')
+        .then((result) => {
+          if (!active) return
+          setRegistrations(result.registrations)
+          setDraftsInProgress(result.draftsInProgress)
+          setRules(result.rules)
+        })
+        .catch((loadError: unknown) => {
+          if (!active) return
+          if (loadError instanceof ApiError && loadError.status === 401) onUnauthorized()
+          else if (!silent) setError(errorText(loadError, 'Could not load registrations.'))
+        })
+        .finally(() => {
+          if (active && !silent) setLoading(false)
+        })
+    }
+
+    // Initial load
+    fetchRegistrations()
+
+    // 1. Real-time Server-Sent Events (instant push notifications from VPS/backend)
+    let sse: EventSource | null = null
+    try {
+      sse = new EventSource('/api/admin/registrations/stream', { withCredentials: true })
+      sse.addEventListener('update', () => {
+        if (active) fetchRegistrations(true)
+      })
+      sse.addEventListener('registration_submitted', () => {
+        if (active) fetchRegistrations(true)
+      })
+      sse.addEventListener('registration_created', () => {
+        if (active) fetchRegistrations(true)
+      })
+      sse.addEventListener('registration_updated', () => {
+        if (active) fetchRegistrations(true)
+      })
+      sse.addEventListener('email_update', () => {
+        if (active) fetchRegistrations(true)
+      })
+    } catch {
+      // EventSource unsupported in browser/environment
+    }
+
+    // 2. Cross-tab BroadcastChannel (instant 1ms sync when testing in another tab)
+    let bc: BroadcastChannel | null = null
+    try {
+      bc = new BroadcastChannel('kgrcet_hackathon')
+      bc.onmessage = (event) => {
+        if (event.data?.type === 'registration_updated' && active) {
+          fetchRegistrations(true)
+        }
+      }
+    } catch {
+      // BroadcastChannel unsupported
+    }
+
+    // 3. Low-overhead background sync: poll only every 10s AND only when tab is actively visible
+    const interval = setInterval(() => {
+      if (active && document.visibilityState === 'visible') {
+        fetchRegistrations(true)
+      }
+    }, 10000)
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && active) {
+        fetchRegistrations(true)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      active = false
+      if (sse) sse.close()
+      if (bc) bc.close()
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [onUnauthorized])
 
   const editingReceipt = editing?.receipt

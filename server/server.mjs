@@ -510,15 +510,30 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
 
   initEmailTables(db)
 
+  const adminEventClients = new Set()
+
+  function notifyAdminClients(type = 'update') {
+    const payload = `event: ${type}\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`
+    for (const client of adminEventClients) {
+      try {
+        client.write(payload)
+      } catch {
+        adminEventClients.delete(client)
+      }
+    }
+  }
+
   function triggerEmailQueue() {
     setImmediate(() => {
       processEmailQueue(db, mailer, {
         secrets: [process.env.SMTP_PASS, process.env.SMTP_USER],
-      }).catch((err) => {
-        if (!err.message?.includes('database is not open')) {
-          console.error('[email-queue] Background queue processing error:', err.message)
-        }
       })
+        .then(() => notifyAdminClients('email_update'))
+        .catch((err) => {
+          if (!err.message?.includes('database is not open')) {
+            console.error('[email-queue] Background queue processing error:', err.message)
+          }
+        })
     })
   }
 
@@ -793,7 +808,34 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       return json(res, 200, { events })
     }
 
-    // 8. View registrations
+    // 8. Real-time SSE stream for connected admin dashboard
+    if (url.pathname === '/api/admin/registrations/stream' && req.method === 'GET') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      })
+      res.write(': connected\n\n')
+      adminEventClients.add(res)
+
+      const keepAliveTimer = setInterval(() => {
+        try {
+          res.write(': keepalive\n\n')
+        } catch {
+          clearInterval(keepAliveTimer)
+          adminEventClients.delete(res)
+        }
+      }, 25000)
+
+      req.on('close', () => {
+        clearInterval(keepAliveTimer)
+        adminEventClients.delete(res)
+      })
+      return
+    }
+
+    // 9. View registrations
     if (url.pathname === '/api/admin/registrations' && req.method === 'GET') {
       const draftsInProgress = db.prepare("SELECT data FROM drafts WHERE status = 'draft'").all().filter(({ data }) => {
         const draft = JSON.parse(data)
@@ -822,6 +864,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       } catch (queueErr) {
         console.error('[email-queue] Failed to enqueue spot confirmation emails:', queueErr.message)
       }
+      notifyAdminClients('registration_created')
       return json(res, 201, { registration: publicRegistration(allRegistrations().find((row) => row.receipt === receipt)) })
     }
 
@@ -876,6 +919,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
           else if (payment.proof) db.prepare('UPDATE drafts SET proof_mime = ?, proof_data = ? WHERE receipt = ?').run(payment.proof.mime, payment.proof.image, receipt)
         }
       }
+      notifyAdminClients('registration_updated')
       return json(res, 200, { registration: publicRegistration(allRegistrations().find((row) => row.receipt === receipt)) })
     }
 
@@ -891,6 +935,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       try {
         enqueueConfirmationEmails(db, receipt, { triggerType: 'manual_resend' })
         triggerEmailQueue()
+        notifyAdminClients('email_update')
         const updated = allRegistrations().find((row) => row.receipt === receipt)
         return json(res, 200, { ok: true, registration: publicRegistration(updated) })
       } catch (err) {
@@ -974,6 +1019,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         const receipt = `REG-${randomBytes(8).toString('hex').toUpperCase()}`
         db.prepare("UPDATE drafts SET status = 'submitted', receipt = ?, submitted_at = ?, data = ?, payment_method = 'upi', utr_number = ?, amount_rupees = ?, proof_mime = ?, proof_data = ?, revision = revision + 1 WHERE token_hash = ? AND revision = ?")
           .run(receipt, Date.now(), JSON.stringify(data), payment.utr, amountFor(data), payment.proof.mime, payment.proof.image, tokenHash, input.revision)
+        notifyAdminClients('registration_submitted')
         return json(res, 200, { draft: publicDraft(current()) })
       }
       if (req.method !== 'GET') return error(res, 404, 'not found')
@@ -989,7 +1035,13 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       error(res, err.statusCode || (err.message === 'request body too large' ? 413 : 400), err.message || 'invalid request')
     }
   })
-  app.on('close', () => db.close())
+  app.on('close', () => {
+    for (const client of adminEventClients) {
+      try { client.end() } catch {}
+    }
+    adminEventClients.clear()
+    db.close()
+  })
   return app
 }
 
