@@ -10,17 +10,19 @@
     "start": "node --env-file-if-exists=.env server/server.mjs",
     "hash-admin-password": "node server/hash-admin-password.mjs",
     "clear-admin-sessions": "node --env-file-if-exists=.env server/clear-admin-sessions.mjs",
+    "clear-registrations": "node --env-file-if-exists=.env server/clear-registrations.mjs",
     "test:server": "node --test server/*.test.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
     "framer-motion": "latest",
     "lucide-react": "latest",
+    "nodemailer": "^10.5.0",
     "qrcode": "^1.5.4",
     "react": "latest",
     "react-dom": "latest",
     "typescript": "latest",
-    "vite": "latest"
+    "vite": "^8.3.7"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.5",

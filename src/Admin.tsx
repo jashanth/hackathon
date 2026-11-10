@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { AlertCircle, ArrowRight, ChevronDown, Download, ExternalLink, Eye, EyeOff, ImageIcon, LogOut, Pencil, Plus, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
+import { AlertCircle, ArrowRight, ChevronDown, Download, ExternalLink, Eye, EyeOff, ImageIcon, LogOut, Mail, Pencil, Plus, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
 import QRCode from 'qrcode'
 import { payment as payee, upiLink } from './config/payment'
 import { processScreenshotFile } from './image'
@@ -36,6 +36,7 @@ type TeamData = {
 }
 type ReviewStatus = 'pending' | 'valid' | 'invalid'
 type PaymentMethod = 'upi' | 'cash'
+type EmailStatus = 'pending' | 'sending' | 'sent' | 'partial' | 'failed'
 type AdminRegistration = {
   receipt: string
   revision: number
@@ -49,6 +50,11 @@ type AdminRegistration = {
   utrNumber: string | null
   amount: number
   hasPaymentProof: boolean
+  emailStatus?: EmailStatus | null
+  emailSentCount?: number
+  emailFailedCount?: number
+  emailLastAttemptAt?: number | null
+  emailLastError?: string | null
 }
 type Payment = { paymentMethod: PaymentMethod; utrNumber?: string; screenshotDataUrl?: string }
 type Rules = { minTeamSize: number | null; maxTeamSize: number | null; feePerPerson: number; submissionEnabled: boolean }
@@ -117,20 +123,25 @@ function csvCell(value: string) {
 }
 
 function downloadCsv(registrations: AdminRegistration[]) {
-  const rows = [['Receipt', 'Team', 'Team Size', 'Role', 'Name', 'Email', 'Phone', 'Roll Number', 'Gender', 'Year', 'College', 'College Code', 'Course', 'Food Preference', 'Amount (INR)', 'Payment Method', 'UTR', 'Screenshot', 'Status', 'Reviewed By', 'Source', 'Submitted At']]
+  const rows = [['Receipt', 'Team', 'Team Size', 'Role', 'Name', 'Email', 'Phone', 'Roll Number', 'Gender', 'Year', 'College', 'College Code', 'Course', 'Food Preference', 'Amount (INR)', 'Payment Method', 'UTR', 'Screenshot', 'Status', 'Email Status', 'Emails Sent', 'Emails Failed', 'Last Email Attempt', 'Reviewed By', 'Source', 'Submitted At']]
   for (const registration of registrations) {
     const { receipt, data, reviewStatus, source } = registration
     const person = (role: string, member: Member | TeamData, name: string) => [
       receipt, data.teamName, String(peopleIn(registration)), role, name, member.email, member.phone || '', member.rollNumber || '', member.gender || '',
       member.year || '', member.college, member.collegeCode || '', member.courseName || '', member.foodPreference || '',
     ]
-    // Payment columns sit on the leader's row only, so summing the amount column gives the real total.
+    // Payment and email columns sit on the leader's row only, so summing the amount column gives the real total.
     rows.push([
       ...person('Leader', data, data.leadName),
       String(registration.amount), methodLabels[registration.paymentMethod], registration.utrNumber || '', registration.hasPaymentProof ? 'Yes' : 'No',
-      statusLabels[reviewStatus], registration.reviewedBy || '', source, registration.submittedAt ? new Date(registration.submittedAt).toISOString() : '',
+      statusLabels[reviewStatus],
+      registration.emailStatus ? registration.emailStatus.toUpperCase() : (reviewStatus === 'valid' ? 'QUEUED' : 'NOT APPLICABLE'),
+      String(registration.emailSentCount ?? 0),
+      String(registration.emailFailedCount ?? 0),
+      formatDate(registration.emailLastAttemptAt ?? null),
+      registration.reviewedBy || '', source, registration.submittedAt ? new Date(registration.submittedAt).toISOString() : '',
     ])
-    for (const member of data.members) rows.push([...person('Member', member, member.name), '', '', '', '', statusLabels[reviewStatus], '', source, ''])
+    for (const member of data.members) rows.push([...person('Member', member, member.name), '', '', '', '', statusLabels[reviewStatus], '', '', '', '', '', source, ''])
   }
   const url = URL.createObjectURL(new Blob([`﻿${rows.map((row) => row.map(csvCell).join(',')).join('\r\n')}`], { type: 'text/csv;charset=utf-8' }))
   const link = document.createElement('a')
@@ -578,16 +589,35 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
   async function setStatus(registration: AdminRegistration, status: ReviewStatus) {
     const { teamName } = registration.data
     const payment = registration.paymentMethod === 'cash' ? `${rupees(registration.amount)} in cash` : `${rupees(registration.amount)}, UTR ${registration.utrNumber}`
-    if (!window.confirm(status === 'valid' ? `Mark ${teamName} (${registration.receipt}) as VALID?\n\nPayment: ${payment}` : `Mark ${teamName} (${registration.receipt}) as INVALID?\n\nThe team is not notified automatically.`)) return
+    const emailNotice = status === 'valid' ? `\n\nAutomated confirmation emails will be sent to all ${peopleIn(registration)} member(s).` : '\n\nThe team is not notified automatically.'
+    if (!window.confirm(status === 'valid' ? `Mark ${teamName} (${registration.receipt}) as VALID?\n\nPayment: ${payment}${emailNotice}` : `Mark ${teamName} (${registration.receipt}) as INVALID?${emailNotice}`)) return
     setUpdating(registration.receipt)
     setError('')
     try {
       const result = await api<{ registration: AdminRegistration }>(`registrations/${registration.receipt}/status`, 'PUT', { status })
       replace(result.registration)
-      setToast(`${teamName} marked ${statusLabels[status].toLowerCase()}.`)
+      setToast(status === 'valid' ? `${teamName} marked valid. Confirmation emails queued.` : `${teamName} marked invalid.`)
     } catch (statusError) {
       if (statusError instanceof ApiError && statusError.status === 401) onUnauthorized()
       else setError(errorText(statusError, 'Could not update the registration.'))
+    } finally {
+      setUpdating(null)
+    }
+  }
+
+  async function resendConfirmation(registration: AdminRegistration) {
+    const { teamName } = registration.data
+    const count = peopleIn(registration)
+    if (!window.confirm(`Resend confirmation email to all ${count} member(s) of ${teamName} (${registration.receipt})?\n\nEach member will receive their personalized verified registration confirmation.`)) return
+    setUpdating(registration.receipt)
+    setError('')
+    try {
+      const result = await api<{ registration: AdminRegistration }>(`registrations/${registration.receipt}/resend-email`, 'POST', {})
+      replace(result.registration)
+      setToast(`Confirmation emails queued for ${teamName}.`)
+    } catch (resendError) {
+      if (resendError instanceof ApiError && resendError.status === 401) onUnauthorized()
+      else setError(errorText(resendError, 'Could not resend confirmation email.'))
     } finally {
       setUpdating(null)
     }
@@ -628,6 +658,17 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
     <>
       {registration.reviewStatus !== 'valid' && <button type="button" className="is-valid" disabled={updating === registration.receipt} onClick={() => void setStatus(registration, 'valid')}>Mark valid</button>}
       {registration.reviewStatus !== 'invalid' && <button type="button" className="is-invalid" disabled={updating === registration.receipt} onClick={() => void setStatus(registration, 'invalid')}>Mark invalid</button>}
+      {registration.reviewStatus === 'valid' && (
+        <button
+          type="button"
+          className="is-resend"
+          disabled={updating === registration.receipt || registration.emailStatus === 'sending'}
+          onClick={() => void resendConfirmation(registration)}
+          title="Manually resend confirmation email to all team members"
+        >
+          <Mail size={12} /> Resend email
+        </button>
+      )}
     </>
   )
 
@@ -796,7 +837,7 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
-                <tr><th>Team</th><th>Leader</th><th>College</th><th>Payment</th><th>Receipt</th><th>Status</th><th><span className="registration-sr-only">Actions</span></th></tr>
+                <tr><th>Team</th><th>Leader</th><th>College</th><th>Payment</th><th>Receipt</th><th>Status</th><th>Email</th><th><span className="registration-sr-only">Actions</span></th></tr>
               </thead>
               <tbody>
                 {visible.map((registration) => {
@@ -838,6 +879,31 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
                       <td data-label="Status">
                         <span className={`admin-status is-${reviewStatus}`}>{statusLabels[reviewStatus]}</span>
                         {registration.reviewedBy && <small>by {registration.reviewedBy}</small>}
+                      </td>
+                      <td data-label="Email">
+                        {reviewStatus === 'valid' ? (
+                          <div className="admin-email-col">
+                            <span className={`admin-email-badge is-${registration.emailStatus || 'pending'}`}>
+                              {registration.emailStatus === 'sent' && 'Sent'}
+                              {registration.emailStatus === 'sending' && 'Sending...'}
+                              {registration.emailStatus === 'pending' && 'Queued'}
+                              {registration.emailStatus === 'partial' && 'Partial'}
+                              {registration.emailStatus === 'failed' && 'Failed'}
+                              {!registration.emailStatus && 'Queued'}
+                            </span>
+                            <small>
+                              {registration.emailSentCount ?? 0}/{peopleIn(registration)} sent
+                              {(registration.emailFailedCount ?? 0) > 0 && <span className="admin-email-err"> ({registration.emailFailedCount} failed)</span>}
+                            </small>
+                            {registration.emailLastAttemptAt ? (
+                              <small className="admin-email-time" title={registration.emailLastError || undefined}>
+                                {formatDate(registration.emailLastAttemptAt)}
+                              </small>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="admin-email-dash">—</span>
+                        )}
                       </td>
                       <td className="admin-actions">
                         {statusActions(registration)}

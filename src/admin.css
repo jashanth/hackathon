@@ -112,6 +112,17 @@
 .admin-actions button:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
 .admin-actions .is-valid { color: var(--ok); }
 .admin-actions .is-invalid { color: var(--danger); }
+.admin-actions .is-resend { color: var(--gold); }
+
+.admin-email-col { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.admin-email-badge { display: inline-block; padding: 2px 9px; border: 1px solid currentColor; border-radius: 999px; font: 500 11.5px var(--font-mono); letter-spacing: .04em; }
+.admin-email-badge.is-sent { color: var(--ok); background: var(--ok-glow); }
+.admin-email-badge.is-sending, .admin-email-badge.is-pending { color: var(--gold); background: var(--glow); }
+.admin-email-badge.is-partial { color: #f97316; background: rgba(249, 115, 22, 0.12); }
+.admin-email-badge.is-failed { color: var(--danger); background: rgba(239, 68, 68, 0.12); }
+.admin-email-dash { color: var(--ink-soft); font-family: var(--font-mono); }
+.admin-email-err { color: var(--danger); font-weight: 500; }
+.admin-email-time { font-size: 11.5px; color: var(--ink-soft); font-family: var(--font-mono); }
 
 /* Counts */
 .admin-counts { padding-block: 10px; }
@@ -197,6 +208,8 @@
   .admin-table td::before { content: attr(data-label); grid-column: 1; grid-row: 1 / span 4; color: var(--ink-soft); font: 400 11px/1.9 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
   .admin-table td[data-label='College'] { display: flex; gap: 12px; }
   .admin-table td[data-label='College']::before { flex: 0 0 76px; }
+  .admin-table td[data-label='Email'] { display: flex; gap: 12px; }
+  .admin-table td[data-label='Email']::before { flex: 0 0 76px; }
   .admin-table td > span, .admin-table td > .admin-spot { justify-self: start; }
   .admin-spot { margin: 4px 0 2px; }
   .admin-table .admin-actions { display: flex; flex-wrap: wrap; gap: 4px 18px; width: auto; padding-top: 12px; }

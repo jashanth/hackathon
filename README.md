@@ -248,3 +248,12 @@ sudo systemctl restart hackathon
 sudo systemctl status hackathon
 sudo journalctl -u hackathon -n 50 --no-pager
 ```
+
+### 6. Clearing Test Registrations
+If test data accumulated during testing and you want a clean slate before launch:
+
+```bash
+# In the project directory on VPS:
+npm run clear-registrations
+```
+This removes all submitted registrations and in-progress registration drafts, reclaims disk space using SQLite `VACUUM`, and leaves admin accounts and active admin login sessions untouched.

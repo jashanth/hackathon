@@ -5,6 +5,7 @@ import { mkdirSync } from 'node:fs'
 import { extname, join, normalize, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
+import { initEmailTables, createSmtpTransport, enqueueConfirmationEmails, processEmailQueue } from './email-service.mjs'
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const port = Number(process.env.PORT || 3001)
@@ -341,6 +342,11 @@ function publicRegistration(row) {
     utrNumber: row.utr_number || null,
     amount: row.amount_rupees ?? 0,
     hasPaymentProof: Boolean(row.has_proof),
+    emailStatus: row.email_status || null,
+    emailSentCount: row.email_sent_count ?? 0,
+    emailFailedCount: row.email_failed_count ?? 0,
+    emailLastAttemptAt: row.email_last_attempt_at || null,
+    emailLastError: row.email_last_error || null,
   }
 }
 
@@ -413,7 +419,7 @@ function cleanRegistration(data) {
   return cleaned
 }
 
-export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJson } = {}) {
+export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJson, mailer: customMailer } = {}) {
   const secure = process.env.NODE_ENV === 'production'
   const rawAdminConfig = adminAccounts ?? adminAccountsJson ?? process.env.ADMIN_ACCOUNTS_JSON
 
@@ -425,6 +431,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
 
   // Validate admin accounts configuration on startup
   const configuredAdminAccounts = parseAdminAccounts(rawAdminConfig, secure)
+  const mailer = customMailer || createSmtpTransport(process.env)
 
   mkdirSync(resolve(dbPath, '..'), { recursive: true })
   const db = new DatabaseSync(dbPath)
@@ -489,11 +496,34 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
     ['amount_rupees', 'INTEGER'],
     ['proof_mime', 'TEXT'],
     ['proof_data', 'BLOB'],
+    ['email_status', 'TEXT'],
+    ['email_sent_count', 'INTEGER DEFAULT 0'],
+    ['email_failed_count', 'INTEGER DEFAULT 0'],
+    ['email_last_attempt_at', 'INTEGER'],
+    ['email_last_error', 'TEXT'],
+    ['email_first_sent_at', 'INTEGER'],
   ]) {
     if (!draftColumns.has(name)) db.exec(`ALTER TABLE drafts ADD COLUMN ${name} ${definition}`)
   }
   // One UPI payment can only pay for one team.
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS drafts_utr_number ON drafts(utr_number) WHERE utr_number IS NOT NULL')
+
+  initEmailTables(db)
+
+  function triggerEmailQueue() {
+    setImmediate(() => {
+      processEmailQueue(db, mailer, {
+        secrets: [process.env.SMTP_PASS, process.env.SMTP_USER],
+      }).catch((err) => {
+        if (!err.message?.includes('database is not open')) {
+          console.error('[email-queue] Background queue processing error:', err.message)
+        }
+      })
+    })
+  }
+
+  // Drain any pending/retry items on startup
+  triggerEmailQueue()
 
   const rules = rulesFromEnvironment()
 
@@ -565,7 +595,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       .run(Date.now(), ip, String(email || '').slice(0, 254), result, String(userAgent || '').slice(0, 500))
   }
 
-  const allRegistrations = () => db.prepare("SELECT receipt, revision, data, source, review_status, reviewed_by, reviewed_at, submitted_at, payment_method, utr_number, amount_rupees, proof_mime IS NOT NULL AS has_proof FROM drafts WHERE status = 'submitted' ORDER BY submitted_at DESC").all()
+  const allRegistrations = () => db.prepare("SELECT receipt, revision, data, source, review_status, reviewed_by, reviewed_at, submitted_at, payment_method, utr_number, amount_rupees, proof_mime IS NOT NULL AS has_proof, email_status, email_sent_count, email_failed_count, email_last_attempt_at, email_last_error FROM drafts WHERE status = 'submitted' ORDER BY submitted_at DESC").all()
   const amountFor = (data) => rules.feePerPerson * (data.members.length + 1)
 
   // Reads the payment part of a request. Cash at the desk has no UTR or screenshot; UPI needs a unique 12-digit UTR.
@@ -784,8 +814,14 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       const tokenHash = hashToken(randomBytes(32).toString('hex'))
       const receipt = `REG-${randomBytes(8).toString('hex').toUpperCase()}`
       db.prepare('INSERT INTO sessions VALUES (?, ?, ?)').run(tokenHash, now, now + cookieTtlSeconds * 1000)
-      db.prepare("INSERT INTO drafts (token_hash, data, step, status, receipt, revision, source, review_status, reviewed_by, reviewed_at, submitted_at, payment_method, utr_number, amount_rupees, proof_mime, proof_data) VALUES (?, ?, 2, 'submitted', ?, 0, 'spot', 'valid', ?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(tokenHash, JSON.stringify(data), receipt, admin.email, now, now, payment.method, payment.utr, amountFor(data), payment.proof?.mime ?? null, payment.proof?.image ?? null)
+      db.prepare("INSERT INTO drafts (token_hash, data, step, status, receipt, revision, source, review_status, reviewed_by, reviewed_at, submitted_at, payment_method, utr_number, amount_rupees, proof_mime, proof_data, email_first_sent_at) VALUES (?, ?, 2, 'submitted', ?, 0, 'spot', 'valid', ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(tokenHash, JSON.stringify(data), receipt, admin.email, now, now, payment.method, payment.utr, amountFor(data), payment.proof?.mime ?? null, payment.proof?.image ?? null, now)
+      try {
+        enqueueConfirmationEmails(db, receipt, { triggerType: 'status_valid' })
+        triggerEmailQueue()
+      } catch (queueErr) {
+        console.error('[email-queue] Failed to enqueue spot confirmation emails:', queueErr.message)
+      }
       return json(res, 201, { registration: publicRegistration(allRegistrations().find((row) => row.receipt === receipt)) })
     }
 
@@ -807,7 +843,23 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       const input = await readJsonBody(req, maxPaymentBodyBytes)
       if (isStatus) {
         if (!reviewStatuses.includes(input?.status)) return error(res, 400, 'invalid status')
-        db.prepare('UPDATE drafts SET review_status = ?, reviewed_by = ?, reviewed_at = ? WHERE receipt = ?').run(input.status, admin.email, Date.now(), receipt)
+        const now = Date.now()
+        const isBecomingValid = input.status === 'valid' && existing.reviewStatus !== 'valid'
+
+        db.prepare('UPDATE drafts SET review_status = ?, reviewed_by = ?, reviewed_at = ? WHERE receipt = ?').run(input.status, admin.email, now, receipt)
+
+        if (isBecomingValid) {
+          // Idempotent duplicate protection: atomically set email_first_sent_at
+          const claim = db.prepare('UPDATE drafts SET email_first_sent_at = ? WHERE receipt = ? AND email_first_sent_at IS NULL').run(now, receipt)
+          if (claim.changes === 1) {
+            try {
+              enqueueConfirmationEmails(db, receipt, { triggerType: 'status_valid' })
+              triggerEmailQueue()
+            } catch (queueErr) {
+              console.error('[email-queue] Failed to enqueue confirmation emails:', queueErr.message)
+            }
+          }
+        }
       } else {
         if (!Number.isInteger(input?.revision)) return error(res, 400, 'invalid registration update')
         if (input.revision !== existing.revision) return error(res, 409, 'This registration changed in another tab. Reload and try again.')
@@ -825,6 +877,26 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         }
       }
       return json(res, 200, { registration: publicRegistration(allRegistrations().find((row) => row.receipt === receipt)) })
+    }
+
+    // 12. Manual Resend Email
+    const resendMatch = /^\/api\/admin\/registrations\/(REG-[A-F0-9]{16})\/resend-email$/.exec(url.pathname)
+    if (resendMatch && req.method === 'POST') {
+      const receipt = resendMatch[1]
+      const existing = allRegistrations().find((row) => row.receipt === receipt)
+      if (!existing) return error(res, 404, 'registration not found')
+      if (existing.review_status !== 'valid') {
+        return error(res, 400, 'Confirmation emails can only be sent for valid registrations')
+      }
+      try {
+        enqueueConfirmationEmails(db, receipt, { triggerType: 'manual_resend' })
+        triggerEmailQueue()
+        const updated = allRegistrations().find((row) => row.receipt === receipt)
+        return json(res, 200, { ok: true, registration: publicRegistration(updated) })
+      } catch (err) {
+        console.error('[email-queue] Manual resend failed to enqueue:', err.message)
+        return error(res, 500, 'Could not enqueue confirmation emails')
+      }
     }
 
     return error(res, 404, 'not found')

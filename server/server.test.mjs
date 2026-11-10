@@ -8,6 +8,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { createApp, hashPassword, ALLOWED_ADMINS } from './server.mjs'
 import { clearAdminSessions } from './clear-admin-sessions.mjs'
+import { clearRegistrations } from './clear-registrations.mjs'
 import { validatePasswordStrength } from './hash-admin-password.mjs'
 
 const approved = { SUBMISSION_ENABLED: 'true', REGISTRATION_MIN_TEAM_SIZE: '2', REGISTRATION_MAX_TEAM_SIZE: '4' }
@@ -682,6 +683,29 @@ test('clear-admin-sessions deletes all active sessions and forces re-login', asy
   // All previous sessions are now invalidated
   assert.equal((await f.call('GET', '/api/admin/registrations', undefined, cookie1)).status, 401)
   assert.equal((await f.call('GET', '/api/admin/registrations', undefined, cookie2)).status, 401)
+})
+
+test('clear-registrations removes registrations and drafts while preserving admin sessions', async (t) => {
+  const f = await adminFixture(t)
+  const adminCookie = await f.login(testAdminEmail, testAdminPassword)
+
+  // Create a spot registration as admin
+  const team = complete()
+  const resSpot = await f.call('POST', '/api/admin/registrations', { data: team, ...upi() }, adminCookie)
+  assert.equal(resSpot.status, 201)
+
+  // Verify registration exists
+  const check1 = await f.call('GET', '/api/admin/registrations', undefined, adminCookie)
+  assert.equal(check1.body.registrations.length, 1)
+
+  // Clear registrations
+  const res = clearRegistrations(f.dbPath)
+  assert.equal(res.registrationsRemoved, 1)
+
+  // Admin session is STILL valid
+  const check2 = await f.call('GET', '/api/admin/registrations', undefined, adminCookie)
+  assert.equal(check2.status, 200)
+  assert.equal(check2.body.registrations.length, 0)
 })
 
 test('logout-all invalidates all sessions for an account', async (t) => {
