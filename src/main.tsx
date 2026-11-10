@@ -412,7 +412,7 @@ function App() {
       {/* =================================================================
           HEADER & SUBSTANTIAL COLLEGE IDENTITY
           ================================================================= */}
-      <header className="site-header" data-scrolled={scrolled}>
+      <header className="site-header" data-scrolled={scrolled} data-subpage={isSubpage}>
         <div className="container header-inner">
           <a href={isSubpage ? '/' : '#top'} className="brand-link" aria-label="KG Reddy College of Engineering and Technology - KGRCET Hackathon 2027">
             <span className="brand-plaque">

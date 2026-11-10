@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from 'react'
 import { AlertCircle, ArrowRight, ChevronDown, Download, ExternalLink, Eye, EyeOff, ImageIcon, LogOut, Pencil, Plus, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
 import QRCode from 'qrcode'
 import { payment as payee, upiLink } from './config/payment'
+import { processScreenshotFile } from './image'
 import './admin.css'
 
 type Session = { email: string; name: string }
@@ -108,15 +109,6 @@ const rupees = (amount: number) => `₹${amount.toLocaleString('en-IN')}`
 const sumOf = (list: AdminRegistration[]) => list.reduce((total, registration) => total + registration.amount, 0)
 // The revision changes whenever an edit may have replaced the screenshot.
 const proofUrl = ({ receipt, revision }: AdminRegistration) => `/api/admin/registrations/${receipt}/payment-proof?v=${revision}`
-
-function readAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('The screenshot could not be read. Please choose it again.'))
-    reader.onerror = () => reject(new Error('The screenshot could not be read. Please choose it again.'))
-    reader.readAsDataURL(file)
-  })
-}
 
 // A leading =, +, - or @ would run as a formula when the file is opened in a spreadsheet.
 function csvCell(value: string) {
@@ -302,8 +294,7 @@ function TeamForm({ initial, initialPayment, feePerPerson, minPeople, maxPeople,
   const [team, setTeam] = useState(initial)
   const [method, setMethod] = useState<PaymentMethod>(initialPayment?.paymentMethod ?? 'upi')
   const [utrNumber, setUtrNumber] = useState(initialPayment?.utrNumber ?? '')
-  const [screenshot, setScreenshot] = useState<File | null>(null)
-  const [preview, setPreview] = useState('')
+  const [screenshotDataUrl, setScreenshotDataUrl] = useState<string | undefined>(undefined)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const people = team.members.length + 1
@@ -320,13 +311,6 @@ function TeamForm({ initial, initialPayment, feePerPerson, minPeople, maxPeople,
     return () => { active = false }
   }, [payLink])
 
-  useEffect(() => {
-    if (!screenshot) { setPreview(''); return }
-    const url = URL.createObjectURL(screenshot)
-    setPreview(url)
-    return () => URL.revokeObjectURL(url)
-  }, [screenshot])
-
   // Most teams share one college, so members still blank or matching the leader follow the leader's college.
   const setLeader = (key: keyof TeamData, value: string) => {
     const follows = key === 'college' || key === 'collegeCode'
@@ -341,12 +325,20 @@ function TeamForm({ initial, initialPayment, feePerPerson, minPeople, maxPeople,
   const updateMember = (index: number, key: keyof Member, value: string) =>
     setTeam({ ...team, members: team.members.map((member, memberIndex) => memberIndex === index ? { ...member, [key]: value } : member) })
 
-  function chooseScreenshot(file: File | undefined) {
-    const problem = !file ? '' : !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)
-      ? 'Upload a PNG, JPEG or WebP screenshot.'
-      : file.size > 2 * 1024 * 1024 ? 'The screenshot must be 2 MB or smaller.' : ''
-    setScreenshot(problem || !file ? null : file)
-    setError(problem)
+  async function chooseScreenshot(file: File | undefined) {
+    if (!file) {
+      setScreenshotDataUrl(undefined)
+      setError('')
+      return
+    }
+    try {
+      const dataUrl = await processScreenshotFile(file)
+      setScreenshotDataUrl(dataUrl)
+      setError('')
+    } catch (err) {
+      setScreenshotDataUrl(undefined)
+      setError(err instanceof Error ? err.message : 'The screenshot could not be read. Please choose it again.')
+    }
   }
 
   async function submit(formEvent: FormEvent) {
@@ -362,7 +354,6 @@ function TeamForm({ initial, initialPayment, feePerPerson, minPeople, maxPeople,
     setSaving(true)
     setError('')
     try {
-      const screenshotDataUrl = method === 'upi' && screenshot ? await readAsDataUrl(screenshot) : undefined
       await onSave({ ...team, teamSize: String(people) }, method === 'cash' ? { paymentMethod: 'cash' } : { paymentMethod: 'upi', utrNumber, ...(screenshotDataUrl ? { screenshotDataUrl } : {}) })
     } catch (saveError) {
       setError(errorText(saveError, 'Could not save this team.'))
@@ -433,13 +424,13 @@ function TeamForm({ initial, initialPayment, feePerPerson, minPeople, maxPeople,
           {method === 'upi' && (
             <div className="form-group">
               <label htmlFor={`${formId}-screenshot`}>{initialPayment?.hasPaymentProof ? 'Replace screenshot (optional)' : 'Payment screenshot (optional)'}</label>
-              <input id={`${formId}-screenshot`} className="form-input admin-file" type="file" accept="image/png,image/jpeg,image/webp" onChange={(changeEvent) => chooseScreenshot(changeEvent.target.files?.[0])} />
+              <input id={`${formId}-screenshot`} className="form-input admin-file" type="file" accept="image/png,image/jpeg,image/jpg,image/webp,image/*" onChange={(changeEvent) => void chooseScreenshot(changeEvent.target.files?.[0])} />
             </div>
           )}
-          {method === 'upi' && (preview || initialPayment?.hasPaymentProof) && (
+          {method === 'upi' && (screenshotDataUrl || initialPayment?.hasPaymentProof) && (
             <figure className="admin-proof-thumb">
-              <img src={preview || proofUrl(initialPayment!)} alt={preview ? 'New payment screenshot' : 'Current payment screenshot'} />
-              <figcaption>{preview ? 'New screenshot, saved when you save' : 'Current screenshot'}</figcaption>
+              <img src={screenshotDataUrl || proofUrl(initialPayment!)} alt={screenshotDataUrl ? 'New payment screenshot' : 'Current payment screenshot'} />
+              <figcaption>{screenshotDataUrl ? 'New screenshot, saved when you save' : 'Current screenshot'}</figcaption>
             </figure>
           )}
         </div>

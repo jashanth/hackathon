@@ -213,21 +213,52 @@ export const organizerGroups: OrganizerGroup[] = [
         designation: 'HoD CSE',
         department: 'Department of Computer Science and Engineering',
       },
+      {
+        name: 'G. Jashanth',
+        designation: 'CSE III Year',
+        department: 'Department of Computer Science and Engineering',
+      },
+      {
+        name: 'A. Sai Vaibhav',
+        designation: 'CSE III Year',
+        department: 'Department of Computer Science and Engineering',
+      },
     ],
   },
   {
     title: 'Co-Conveners',
-    role: 'Event Leadership',
+    role: '',
     accent: 'cyan',
-    entries: [],
+    entries: [
+      {
+        name: 'V. Varaprasad',
+        designation: 'CSE III Year',
+        department: 'Department of Computer Science and Engineering',
+      },
+      {
+        name: 'Sana Firdous',
+        designation: 'CSE III Year',
+        department: 'Department of Computer Science and Engineering',
+      },
+      {
+        name: 'G. Snehal Reddy',
+        designation: 'CSE III Year',
+        department: 'Department of Computer Science and Engineering',
+      },
+    ],
   },
   {
     title: 'Faculty Co-ordinators',
-    role: 'Academic Support',
+    role: '',
     accent: 'violet',
     entries: [
       {
         name: 'Mrs. K. Swapna Rani',
+        designation: 'Assistant Professor, CSE',
+        department: 'Department of Computer Science and Engineering',
+      },
+      {
+        name: 'Mrs. B. Upassana',
         designation: 'Assistant Professor, CSE',
         department: 'Department of Computer Science and Engineering',
       },

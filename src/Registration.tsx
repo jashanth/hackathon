@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import QRCode from 'qrcode'
 import { payment, upiLink } from './config/payment'
+import { processScreenshotFile } from './image'
 import './registration.css'
 
 export type Member = {
@@ -39,17 +40,6 @@ type Reply = { draft: Draft; rules?: Rules; error?: string }
 
 const steps = ['Team details', 'Members', 'Payment and Review']
 const rupees = (amount: number) => `₹${amount.toLocaleString('en-IN')}`
-const screenshotTypes = ['image/png', 'image/jpeg', 'image/webp']
-const maxScreenshotBytes = 2 * 1024 * 1024
-
-function readAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('The payment screenshot could not be read. Please choose it again.'))
-    reader.onerror = () => reject(new Error('The payment screenshot could not be read. Please choose it again.'))
-    reader.readAsDataURL(file)
-  })
-}
 
 const teamSizeOptions = ['2', '3', '4'] as const
 const genderOptions = ['Male', 'Female', 'Other'] as const
@@ -230,8 +220,8 @@ export default function Registration() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   // Payment details stay on this page and are sent only with the final submission.
   const [utrNumber, setUtrNumber] = useState('')
-  const [screenshot, setScreenshot] = useState<File | null>(null)
-  const [screenshotPreview, setScreenshotPreview] = useState('')
+  const [screenshotDataUrl, setScreenshotDataUrl] = useState('')
+  const [readingScreenshot, setReadingScreenshot] = useState(false)
   const [paymentQr, setPaymentQr] = useState('')
   const heading = useRef<HTMLHeadingElement>(null)
   const form = useRef<HTMLFormElement>(null)
@@ -307,13 +297,6 @@ export default function Registration() {
     }
   }, [])
 
-  useEffect(() => {
-    if (!screenshot) { setScreenshotPreview(''); return }
-    const url = URL.createObjectURL(screenshot)
-    setScreenshotPreview(url)
-    return () => URL.revokeObjectURL(url)
-  }, [screenshot])
-
   // The QR carries this team's exact amount, so a new one is drawn whenever the amount or team name changes.
   const amountDue = rules && draft ? rules.feePerPerson * (draft.data.members.length + 1) : 0
   const payLink = draft && amountDue ? upiLink(amountDue, draft.data.teamName) : ''
@@ -327,20 +310,30 @@ export default function Registration() {
     return () => { active = false }
   }, [payLink])
 
-  function chooseScreenshot(file: File | undefined) {
+  async function chooseScreenshot(file: File | undefined) {
     const { screenshot: _, ...rest } = errors
-    if (!file) { setScreenshot(null); return }
-    const problem = !screenshotTypes.includes(file.type)
-      ? 'Upload a PNG, JPEG or WebP screenshot.'
-      : file.size > maxScreenshotBytes ? 'The screenshot must be 2 MB or smaller.' : ''
-    setScreenshot(problem ? null : file)
-    setErrors(problem ? { ...rest, screenshot: problem } : rest)
+    if (!file) {
+      setScreenshotDataUrl('')
+      setErrors(rest)
+      return
+    }
+    setReadingScreenshot(true)
+    try {
+      const dataUrl = await processScreenshotFile(file)
+      setScreenshotDataUrl(dataUrl)
+      setErrors(rest)
+    } catch (err) {
+      setScreenshotDataUrl('')
+      setErrors({ ...rest, screenshot: err instanceof Error ? err.message : 'The payment screenshot could not be read. Please choose it again.' })
+    } finally {
+      setReadingScreenshot(false)
+    }
   }
 
   function checkPayment() {
     const found: Record<string, string> = {}
     if (!/^\d{12}$/.test(utrNumber)) found.utrNumber = 'Enter the 12-digit UTR number from your UPI app.'
-    if (!screenshot) found.screenshot = errors.screenshot || 'Upload the payment screenshot.'
+    if (!screenshotDataUrl) found.screenshot = errors.screenshot || 'Upload the payment screenshot.'
     setErrors(found)
     if (Object.keys(found).length) {
       requestAnimationFrame(() => form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus())
@@ -494,11 +487,8 @@ export default function Registration() {
     if (!rules?.submissionEnabled || paused.current || !check(true) || !checkPayment()) return
     locked.current = true
     setBusy(true)
-    let screenshotDataUrl: string
-    try {
-      screenshotDataUrl = await readAsDataUrl(screenshot!)
-    } catch (error) {
-      setErrors({ screenshot: error instanceof Error ? error.message : 'The payment screenshot could not be read.' })
+    if (!screenshotDataUrl) {
+      setErrors({ screenshot: 'Upload the payment screenshot.' })
       locked.current = false
       setBusy(false)
       return
@@ -854,15 +844,17 @@ export default function Registration() {
                               id="screenshot"
                               className="form-input registration-file"
                               type="file"
-                              accept="image/png,image/jpeg,image/webp"
+                              accept="image/png,image/jpeg,image/jpg,image/webp,image/*"
                               required
+                              disabled={busy || readingScreenshot}
                               aria-invalid={Boolean(errors.screenshot)}
                               aria-describedby={['screenshot-hint', errors.screenshot ? 'screenshot-error' : ''].filter(Boolean).join(' ')}
-                              onChange={(e) => chooseScreenshot(e.target.files?.[0])}
+                              onChange={(e) => void chooseScreenshot(e.target.files?.[0])}
                             />
                             <small id="screenshot-hint">PNG, JPEG or WebP, up to 2 MB. It must show the amount and the UTR.</small>
+                            {readingScreenshot && <small className="registration-notice">Preparing screenshot...</small>}
                             {errors.screenshot && <span id="screenshot-error" className="registration-error">{errors.screenshot}</span>}
-                            {screenshotPreview && <img className="registration-proof-preview" src={screenshotPreview} alt="Selected payment screenshot" />}
+                            {screenshotDataUrl && <img className="registration-proof-preview" src={screenshotDataUrl} alt="Selected payment screenshot" />}
                           </div>
                         </div>
                         {errors.payment && <p role="alert" className="registration-error">{errors.payment}</p>}
@@ -885,7 +877,7 @@ export default function Registration() {
                     <button
                       type="submit"
                       className="btn-primary-luxury"
-                      disabled={busy || (draft.step === 2 && (!rules.submissionEnabled || Boolean(remoteError)))}
+                      disabled={busy || readingScreenshot || (draft.step === 2 && (!rules.submissionEnabled || Boolean(remoteError)))}
                       aria-describedby={draft.step === 2 && !rules.submissionEnabled ? 'submission-notice' : undefined}
                     >
                       {busy

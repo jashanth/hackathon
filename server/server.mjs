@@ -923,7 +923,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
-    createApp().listen(port, () => console.log(`server listening on ${port}`))
+    createApp().listen(port, '127.0.0.1', () => console.log(`server listening on ${port}`))
   } catch (err) {
     console.error(`Server failed to start: ${err.message}`)
     process.exit(1)
