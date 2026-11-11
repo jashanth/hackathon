@@ -1,5 +1,5 @@
-# KGRCET Hackathon
-A full-stack hackathon registration and organizer portal built with a raw `node:http` backend, Node's built-in `node:sqlite` (`DatabaseSync`), and a React/Vite frontend.
+# KGRCET Hackathon 2027
+A full-stack national hackathon registration and organizer portal built with a raw `node:http` backend, Node's built-in `node:sqlite` (`DatabaseSync`), and a React/Vite frontend.
 
 ---
 
@@ -7,14 +7,14 @@ A full-stack hackathon registration and organizer portal built with a raw `node:
 
 ### Requirements
 - **Node.js `24.20.0` or newer** (required for native `node:sqlite`).
-- No external runtime dependencies for the server (uses built-in `node:http`, `node:crypto`, `node:sqlite`).
+- Zero external runtime framework dependencies for the core server (uses built-in `node:http`, `node:crypto`, `node:sqlite`, and `nodemailer` for transactional emails).
 
 ### Development
 ```bash
 # Install dependencies
 npm install
 
-# Start both backend (port 3001) and Vite dev server (port 5173) with API proxying
+# Start both backend (port 3001 or next available) and Vite dev server (port 5173) with API proxying
 npm run dev
 ```
 
@@ -34,30 +34,83 @@ npm run test:server
 
 ---
 
-## Registration API
+## Registration Architecture & 4-Digit IDs
 
+- **4-Digit Chronological Registration IDs**: Registrations are assigned clean, sequential 4-digit identifiers starting from `1001` (e.g. `1001`, `1002`, `1003`, etc.). This replaces complex hash identifiers, making physical desk check-ins, badge printing, and payment reconciliation fast and error-free.
 - `GET /api/registration`: Creates or resumes a registration draft.
   ```json
   {
     "draft": { "data": {}, "step": 0, "status": "draft", "receipt": null, "revision": 0 },
-    "rules": { "minTeamSize": null, "maxTeamSize": null, "submissionEnabled": false }
+    "rules": { "minTeamSize": 2, "maxTeamSize": 4, "submissionEnabled": false }
   }
   ```
 - `PUT /api/registration`: Accepts `{ data, step, revision }` and returns the updated draft. Uses optimistic concurrency; stale revisions return `409 Conflict`.
-- `POST /api/registration/submit`: Accepts `{ revision }`. Submission is disabled unless `SUBMISSION_ENABLED=true` and team size bounds (`REGISTRATION_MIN_TEAM_SIZE` / `REGISTRATION_MAX_TEAM_SIZE`) are met.
+- `POST /api/registration/submit`: Accepts `{ revision }`. Submission is disabled unless `SUBMISSION_ENABLED=true` and team size bounds (`REGISTRATION_MIN_TEAM_SIZE` / `REGISTRATION_MAX_TEAM_SIZE`) are met. Automatically assigns the next 4-digit chronological registration ID.
 - **Resume Token**: Cryptographically random 256-bit cookie (`registration_resume`), `HttpOnly`, `SameSite=Strict`, `Path=/`, `Secure` (in production). Only its SHA-256 hash is persisted in SQLite; raw tokens are never accepted from request payloads.
-- **Payload Limits**: Unsafe requests require same-origin verification and `Content-Type: application/json`. Request bodies are limited to 64 KiB.
+- **Payload Limits**: Unsafe requests require same-origin verification and `Content-Type: application/json`. Request bodies are limited to 64 KiB (3 MiB for requests carrying payment screenshots).
+
+---
+
+## Transactional Email System (Brevo SMTP)
+
+When an administrator marks a team's registration as **Valid**, the backend compiles individual personalized HTML confirmation emails for the team leader and every team member, dispatching them through Brevo SMTP via a persistent transactional outbox.
+
+### Design & Theme Alignment
+The email template is custom-crafted to mirror the website's dark celestial luxury aesthetic:
+- **Obsidian & Void Background**: Solid deep obsidian surfaces (`#07060a` and `#0e0b13`) with subtle hairline gilded borders.
+- **Celestial Gold Foil Accent**: Header features a top 3px gold foil gradient bar and **Cormorant Serif Display** typography with italic gold year accent.
+- **4-Digit Registration Credentials Plaque**: Clean display of the 4-digit Registration ID, Team Name, Designation, and Fee Status `(Paid & Verified)`.
+- **Member List**: Clear breakdown of team leader (`◆` gold diamond) and team members (`◇` amethyst diamond).
+- **Cosmic Amethyst Schedule Card**: Event schedule and campus venue in deep cosmic purple (`#140d1e`).
+- **Resilient Email Compatibility**: Standard table-based layouts with inline CSS, supported across desktop and mobile inboxes (Gmail, Outlook, Apple Mail, Yahoo) with zero broken image dependencies.
+
+### SMTP Configuration (`.env`)
+```env
+SMTP_HOST=smtp-relay.brevo.com
+SMTP_PORT=587
+SMTP_USER=your-smtp-login
+SMTP_PASS=your-smtp-key
+SMTP_FROM_EMAIL=no-reply@cybersec-kgrcet.com
+SMTP_FROM_NAME=KGRCET Hackathon
+```
+*Note: In local development, if SMTP credentials are omitted, the server runs in safe dry-run simulation mode.*
+
+---
+
+## Admin Organizer Console
+
+Accessible at `/admin` (with authentication at `/admin/login`).
+
+### Features:
+1. **Live Test Email Dispatcher**:
+   - Header features a dedicated **Test Email** button.
+   - Organizers can enter any target email address and hit Enter to instantly dispatch a sample verified confirmation email to inspect formatting in their actual inbox.
+   - Endpoint: `POST /api/admin/test-email` (authenticated).
+2. **Real-time SSE & Cross-Tab Sync**:
+   - Live push updates via Server-Sent Events (`GET /api/admin/registrations/stream`).
+   - Cross-tab synchronization via `BroadcastChannel`.
+3. **Optimized Scrolling Performance**:
+   - Hardware-accelerated solid surface layer compositing (`contain: paint; transform: translateZ(0)`).
+   - Eliminates layout shifting and browser GPU rasterization flickering during page scrolling.
+4. **Registration Verification & Status Management**:
+   - Mark teams as `Valid` or `Invalid`. Marking valid triggers idempotent automated email queuing.
+   - **Resend Email**: Ability to manually re-dispatch confirmation emails to team members with one click.
+5. **Spot Registration & Editing**:
+   - Register walk-in spot teams with instant 4-digit ID assignment and receipt generation.
+   - Edit submitted team details or reconcile payment information (Cash or UPI).
+6. **CSV Export**:
+   - Export all registrations, participant rosters, and payment reconciliation records to clean CSV.
 
 ---
 
 ## Admin Authentication & Security Architecture
 
-The admin portal (`/admin/login` and `/admin`) is hardened against credential theft, brute-force attacks, timing attacks, session hijacking, and CSRF.
+The admin portal is hardened against credential theft, brute-force attacks, timing attacks, session hijacking, and CSRF.
 
 ### 1. Zero Hardcoded Credentials & Strict Allowlist
 - No default accounts, plaintext passwords, or fallback credentials exist in the codebase.
 - Accounts are loaded **exclusively** from the `ADMIN_ACCOUNTS_JSON` environment variable.
-- Only two organizers are authorized to access the system:
+- Only authorized organizers are permitted access:
   1. `saivaibhavaluguri@gmail.com` ("Aluguri SaiVaibhav")
   2. `jashanthgonipati@gmail.com`, username `jashanth` ("Jashanth Gonipati")
 - In production (`NODE_ENV=production`), the server **refuses to start** if `ADMIN_ACCOUNTS_JSON` is missing, empty, contains unallowlisted accounts, or has invalid password hashes.
@@ -72,26 +125,17 @@ The admin portal (`/admin/login` and `/admin`) is hardened against credential th
 - Stored string format: `scrypt$<salt-hex>$<hash-hex>`
 - Constant-time verification with `crypto.timingSafeEqual`.
 
-### 3. How to Create and Hash Admin Passwords
-Use the built-in CLI command to generate scrypt hashes interactively without leaking passwords into shell history or process arguments:
+### 3. Password Generator CLI
+Generate scrypt hashes interactively without leaking passwords into shell history or process arguments:
 
 ```bash
 npm run hash-admin-password
 ```
 
-#### What happens during execution:
-1. **Interactive Prompt**: Prompts for password with input hidden (no terminal echo).
-2. **Password Validation**:
-   - Must be at least **12 characters** long.
-   - Must **not** contain fragments of organizer names or emails (`saivaibhav`, `jashanth`, `aluguri`, `gonipati`, `kgrcet`, `cybersec`, etc.).
-   - Must **not** be in the built-in list of common/dictionary passwords.
-3. **Confirmation**: Re-prompts to confirm the password with hidden echo.
-4. **Hash Output**: Computes the 64-byte scrypt hash with a fresh random salt and prints:
-   ```
-   scrypt$9a2faabeafee792d603f6adf97ca6890$6f8676884ea018479a95c7a966b12d4be2877401917b7ea48f5de15cd666f1e824efdebfe48a7c85fd9c80f3bb8ffd5132f6f4e989e364246d8c0e6fe64c1d52
-   ```
-
-Copy this hash into your `.env` inside `ADMIN_ACCOUNTS_JSON`.
+#### Verification Rules:
+- Must be at least **12 characters** long.
+- Must **not** contain fragments of organizer names or emails (`saivaibhav`, `jashanth`, `aluguri`, `gonipati`, `kgrcet`, etc.).
+- Must **not** be in the dictionary of common passwords.
 
 ---
 
@@ -119,13 +163,13 @@ ADMIN_ACCOUNTS_JSON='[
 
 ## Reverse Proxy & Origin Protection (`PUBLIC_ORIGIN`)
 
-When deployed behind an Nginx reverse proxy (e.g. at `https://hackathon.cybersec-kgrcet.com` terminating TLS and forwarding to `127.0.0.1:3002`):
+When deployed behind an Nginx reverse proxy (terminating TLS and forwarding to local port):
 
 1. **`PUBLIC_ORIGIN`**: Set to the public HTTPS URL (e.g. `https://hackathon.cybersec-kgrcet.com`). State-changing requests (`POST`, `PUT`, etc.) must have an `Origin` or `Referer` matching this exact origin.
 2. **`TRUST_PROXY=true`**: Enables reading proxy headers:
    - Evaluates `X-Forwarded-Proto` and `X-Forwarded-Host`.
-   - Takes the **last address** from `X-Forwarded-For` (the one appended by the trusted Nginx proxy) for rate limiting and audit logging.
-3. **Rejection**: Cross-origin requests and requests without a matching `Origin`/`Referer` receive `HTTP 403 Forbidden` (`"same-origin request required"`).
+   - Takes the **last address** from `X-Forwarded-For` (appended by the trusted proxy) for rate limiting and audit logging.
+3. **Rejection**: Cross-origin requests and requests without a matching `Origin`/`Referer` receive `HTTP 403 Forbidden`.
 
 ---
 
@@ -134,11 +178,7 @@ When deployed behind an Nginx reverse proxy (e.g. at `https://hackathon.cybersec
 - **Persistent Counters in SQLite**: Stored in `admin_login_attempts` table so lockouts survive service restarts.
 - **Thresholds**: 5 failed login attempts within a 15-minute window locks both the originating IP and target account for 15 minutes. Delay progressively scales on repeated lockouts.
 - **Uniform Response & Timing Defense**:
-  - Non-existent accounts, incorrect passwords, and locked accounts all return the identical generic status and payload:
-    ```
-    HTTP 401 Unauthorized
-    { "error": "Invalid credentials" }
-    ```
+  - Non-existent accounts, incorrect passwords, and locked accounts all return the identical generic status and payload (`HTTP 401 Unauthorized`).
   - For non-existent accounts and locked targets, a **dummy scrypt verification** is executed against a constant salt to ensure identical CPU execution time (~20–40ms), preventing timing enumeration.
 - **Body & Content-Type Restriction**: `POST /api/admin/login` strictly enforces `Content-Type: application/json` and rejects payloads exceeding 4 KB with `HTTP 413 Payload Too Large`.
 
@@ -192,6 +232,12 @@ All admin login attempts are recorded in SQLite table `admin_audit_log` (`timest
 | `SUBMISSION_ENABLED` | Whether public registrations are accepted | `true` or `false` |
 | `REGISTRATION_MIN_TEAM_SIZE` | Minimum team size for submission | `2` |
 | `REGISTRATION_MAX_TEAM_SIZE` | Maximum team size for submission | `4` |
+| `SMTP_HOST` | Brevo SMTP server host | `smtp-relay.brevo.com` |
+| `SMTP_PORT` | SMTP port | `587` |
+| `SMTP_USER` | SMTP username | Confidential login |
+| `SMTP_PASS` | SMTP password / key | Confidential secret |
+| `SMTP_FROM_EMAIL` | Verified sender email address | `no-reply@cybersec-kgrcet.com` |
+| `SMTP_FROM_NAME` | Sender display name | `KGRCET Hackathon` |
 
 ---
 
@@ -209,10 +255,10 @@ cd /srv/hackathon
 Run the password generator for each organizer:
 
 ```bash
-# Hash for Aluguri SaiVaibhav (saivaibhavaluguri@gmail.com)
+# Hash for Aluguri SaiVaibhav
 npm run hash-admin-password
 
-# Hash for Jashanth Gonipati (jashanthgonipati@gmail.com)
+# Hash for Jashanth Gonipati
 npm run hash-admin-password
 ```
 
@@ -226,12 +272,17 @@ PUBLIC_ORIGIN=https://hackathon.cybersec-kgrcet.com
 TRUST_PROXY=true
 DATABASE_PATH=/srv/hackathon/data/registration.sqlite
 ADMIN_ACCOUNTS_JSON='[{"email":"saivaibhavaluguri@gmail.com","name":"Aluguri SaiVaibhav","passwordHash":"scrypt$<salt-hex>$<hash-hex>"},{"email":"jashanthgonipati@gmail.com","username":"jashanth","name":"Jashanth Gonipati","passwordHash":"scrypt$<salt-hex>$<hash-hex>"}]'
-# Optional absolute limit: unset = sessions never expire by time
-# ADMIN_SESSION_MAX_HOURS=24
 
 SUBMISSION_ENABLED=true
 REGISTRATION_MIN_TEAM_SIZE=2
 REGISTRATION_MAX_TEAM_SIZE=4
+
+SMTP_HOST=smtp-relay.brevo.com
+SMTP_PORT=587
+SMTP_USER=your-brevo-smtp-user
+SMTP_PASS=your-brevo-smtp-key
+SMTP_FROM_EMAIL=no-reply@cybersec-kgrcet.com
+SMTP_FROM_NAME=KGRCET Hackathon
 ```
 
 ### 4. Build Frontend Assets
@@ -241,19 +292,14 @@ npm run build
 
 ### 5. Restart Systemd Service
 ```bash
-# Restart the hackathon service
 sudo systemctl restart hackathon
-
-# Verify service status and logs
 sudo systemctl status hackathon
-sudo journalctl -u hackathon -n 50 --no-pager
 ```
 
 ### 6. Clearing Test Registrations
 If test data accumulated during testing and you want a clean slate before launch:
 
 ```bash
-# In the project directory on VPS:
 npm run clear-registrations
 ```
-This removes all submitted registrations and in-progress registration drafts, reclaims disk space using SQLite `VACUUM`, and leaves admin accounts and active admin login sessions untouched.
+This removes all submitted registrations and in-progress drafts, resets database sequence allocation, reclaims disk space using SQLite `VACUUM`, and leaves admin accounts and active admin login sessions untouched.

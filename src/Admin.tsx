@@ -481,8 +481,12 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
   const [editing, setEditing] = useState<AdminRegistration | null>(null)
   const [updating, setUpdating] = useState<string | null>(null)
   const [proofReceipt, setProofReceipt] = useState<string | null>(null)
+  const [testEmailOpen, setTestEmailOpen] = useState(false)
+  const [testEmailAddr, setTestEmailAddr] = useState('')
+  const [sendingTestEmail, setSendingTestEmail] = useState(false)
   const editHeading = useRef<HTMLHeadingElement>(null)
   const proofDialog = useRef<HTMLDialogElement>(null)
+  const testEmailDialog = useRef<HTMLDialogElement>(null)
   const fee = rules?.feePerPerson ?? 649
   // Same team sizes as the website form, unless the server sets its own limits.
   const minPeople = rules?.minTeamSize ?? 2
@@ -589,6 +593,14 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
     if (proofReceipt && !proofDialog.current?.open) proofDialog.current?.showModal()
   }, [proofReceipt])
 
+  useEffect(() => {
+    if (testEmailOpen) {
+      if (!testEmailDialog.current?.open) testEmailDialog.current?.showModal()
+    } else {
+      if (testEmailDialog.current?.open) testEmailDialog.current?.close()
+    }
+  }, [testEmailOpen])
+
   const replace = (updated: AdminRegistration) => setRegistrations((current) => current.map((item) => item.receipt === updated.receipt ? updated : item))
   const statusCount = (status: ReviewStatus) => registrations.filter((registration) => registration.reviewStatus === status).length
   const valid = useMemo(() => registrations.filter((registration) => registration.reviewStatus === 'valid'), [registrations])
@@ -692,6 +704,28 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
     }
   }
 
+  async function handleSendTestEmail(e: FormEvent) {
+    e.preventDefault()
+    const target = testEmailAddr.trim()
+    if (!target) return
+    setSendingTestEmail(true)
+    setError('')
+    try {
+      const res = await api<{ ok: boolean; dryRun?: boolean }>('test-email', 'POST', { email: target })
+      setTestEmailOpen(false)
+      if (res.dryRun) {
+        setToast(`Test email simulated in dry-run mode (Brevo SMTP not configured in .env).`)
+      } else {
+        setToast(`Sample test email sent successfully to ${target}! Check your inbox.`)
+      }
+    } catch (sendErr) {
+      setError(errorText(sendErr, 'Failed to send test email.'))
+      setToast(errorText(sendErr, 'Failed to send test email.'))
+    } finally {
+      setSendingTestEmail(false)
+    }
+  }
+
   // Lets the form show the message, unless the session is unauthorized and must close.
   const saving = async (save: () => Promise<void>) => {
     try {
@@ -751,7 +785,20 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
           <h1>Organizer <span>Console</span></h1>
           <p>{session.name} <span aria-hidden="true">•</span> {session.email}</p>
         </div>
-        <button type="button" className="btn-secondary-luxury" onClick={onSignOut}><LogOut size={14} /> Sign Out</button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn-secondary-luxury"
+            onClick={() => {
+              setTestEmailAddr(session.email || '')
+              setTestEmailOpen(true)
+            }}
+            title="Send sample test confirmation email"
+          >
+            <Mail size={14} /> Test Email
+          </button>
+          <button type="button" className="btn-secondary-luxury" onClick={onSignOut}><LogOut size={14} /> Sign Out</button>
+        </div>
       </header>
 
       <section className="admin-stats" aria-label="Summary">
@@ -904,86 +951,87 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
           </div>
 
           <div className="admin-table-wrap">
-            <table className="admin-table">
-              <thead>
-                <tr><th>Team</th><th>Leader</th><th>College</th><th>Payment</th><th>Receipt</th><th>Status</th><th>Email</th><th><span className="registration-sr-only">Actions</span></th></tr>
-              </thead>
-              <tbody>
-                {visible.map((registration) => {
-                  const { receipt, data, reviewStatus, source } = registration
-                  const open = openReceipt === receipt
-                  return (
-                    <tr key={receipt} className={`is-${reviewStatus}`}>
-                      <td data-label="Team">
-                        <button type="button" className="admin-team-toggle" aria-expanded={open} aria-label={`${data.teamName}, ${peopleIn(registration)} people. ${open ? 'Hide' : 'Show'} members`} onClick={() => setOpenReceipt(open ? null : receipt)}>
-                          <strong>{data.teamName}</strong>
-                          <ChevronDown size={14} />
-                        </button>
-                        <small>{peopleIn(registration)} {peopleIn(registration) === 1 ? 'person' : 'people'}</small>
-                        {open && (
-                          <ul className="admin-members">
-                            {data.members.map((member, index) => <li key={index}><b>{member.name}</b><span>{member.email}{member.phone ? ` · ${member.phone}` : ''}</span><span>{[member.college, member.year, member.courseName].filter(Boolean).join(' · ')}</span></li>)}
-                            {!data.members.length && <li><span>No additional members.</span></li>}
-                          </ul>
-                        )}
-                      </td>
-                      <td data-label="Leader">
-                        <span>{data.leadName}</span>
-                        <small>{data.email}</small>
-                        <small>{data.phone}</small>
-                      </td>
-                      <td data-label="College">{data.college}</td>
-                      <td data-label="Payment">
-                        <span className="admin-amount">{rupees(registration.amount)}</span>
-                        <small><b className="admin-method">{methodLabels[registration.paymentMethod]}</b>{registration.utrNumber && <span className="admin-receipt"> {registration.utrNumber}</span>}</small>
-                        {registration.hasPaymentProof && (
-                          <button type="button" className="admin-proof-link" onClick={() => setProofReceipt(receipt)}><ImageIcon size={13} /> View proof</button>
-                        )}
-                      </td>
-                      <td data-label="Receipt">
-                        <span className="admin-receipt">{receipt}</span>
-                        {source === 'spot' && <b className="admin-spot">SPOT</b>}
-                        <small>{formatDate(registration.submittedAt)}</small>
-                      </td>
-                      <td data-label="Status">
-                        <span className={`admin-status is-${reviewStatus}`}>{statusLabels[reviewStatus]}</span>
-                        {registration.reviewedBy && <small>by {registration.reviewedBy}</small>}
-                      </td>
-                      <td data-label="Email">
-                        {reviewStatus === 'valid' ? (
-                          <div className="admin-email-col">
-                            <span className={`admin-email-badge is-${registration.emailStatus || 'pending'}`}>
-                              {registration.emailStatus === 'sent' && 'Sent'}
-                              {registration.emailStatus === 'sending' && 'Sending...'}
-                              {registration.emailStatus === 'pending' && 'Queued'}
-                              {registration.emailStatus === 'partial' && 'Partial'}
-                              {registration.emailStatus === 'failed' && 'Failed'}
-                              {!registration.emailStatus && 'Queued'}
-                            </span>
-                            <small>
-                              {registration.emailSentCount ?? 0}/{peopleIn(registration)} sent
-                              {(registration.emailFailedCount ?? 0) > 0 && <span className="admin-email-err"> ({registration.emailFailedCount} failed)</span>}
-                            </small>
-                            {registration.emailLastAttemptAt ? (
-                              <small className="admin-email-time" title={registration.emailLastError || undefined}>
-                                {formatDate(registration.emailLastAttemptAt)}
+            {visible.length > 0 ? (
+              <table className="admin-table">
+                <thead>
+                  <tr><th>Team</th><th>Leader</th><th>College</th><th>Payment</th><th>Receipt</th><th>Status</th><th>Email</th><th><span className="registration-sr-only">Actions</span></th></tr>
+                </thead>
+                <tbody>
+                  {visible.map((registration) => {
+                    const { receipt, data, reviewStatus, source } = registration
+                    const open = openReceipt === receipt
+                    return (
+                      <tr key={receipt} className={`is-${reviewStatus}`}>
+                        <td data-label="Team">
+                          <button type="button" className="admin-team-toggle" aria-expanded={open} aria-label={`${data.teamName}, ${peopleIn(registration)} people. ${open ? 'Hide' : 'Show'} members`} onClick={() => setOpenReceipt(open ? null : receipt)}>
+                            <strong>{data.teamName}</strong>
+                            <ChevronDown size={14} />
+                          </button>
+                          <small>{peopleIn(registration)} {peopleIn(registration) === 1 ? 'person' : 'people'}</small>
+                          {open && (
+                            <ul className="admin-members">
+                              {data.members.map((member, index) => <li key={index}><b>{member.name}</b><span>{member.email}{member.phone ? ` · ${member.phone}` : ''}</span><span>{[member.college, member.year, member.courseName].filter(Boolean).join(' · ')}</span></li>)}
+                              {!data.members.length && <li><span>No additional members.</span></li>}
+                            </ul>
+                          )}
+                        </td>
+                        <td data-label="Leader">
+                          <span>{data.leadName}</span>
+                          <small>{data.email}</small>
+                          <small>{data.phone}</small>
+                        </td>
+                        <td data-label="College">{data.college}</td>
+                        <td data-label="Payment">
+                          <span className="admin-amount">{rupees(registration.amount)}</span>
+                          <small><b className="admin-method">{methodLabels[registration.paymentMethod]}</b>{registration.utrNumber && <span className="admin-receipt"> {registration.utrNumber}</span>}</small>
+                          {registration.hasPaymentProof && (
+                            <button type="button" className="admin-proof-link" onClick={() => setProofReceipt(receipt)}><ImageIcon size={13} /> View proof</button>
+                          )}
+                        </td>
+                        <td data-label="Receipt">
+                          <span className="admin-receipt">{receipt}</span>
+                          {source === 'spot' && <b className="admin-spot">SPOT</b>}
+                          <small>{formatDate(registration.submittedAt)}</small>
+                        </td>
+                        <td data-label="Status">
+                          <span className={`admin-status is-${reviewStatus}`}>{statusLabels[reviewStatus]}</span>
+                          {registration.reviewedBy && <small>by {registration.reviewedBy}</small>}
+                        </td>
+                        <td data-label="Email">
+                          {reviewStatus === 'valid' ? (
+                            <div className="admin-email-col">
+                              <span className={`admin-email-badge is-${registration.emailStatus || 'pending'}`}>
+                                {registration.emailStatus === 'sent' && 'Sent'}
+                                {registration.emailStatus === 'sending' && 'Sending...'}
+                                {registration.emailStatus === 'pending' && 'Queued'}
+                                {registration.emailStatus === 'partial' && 'Partial'}
+                                {registration.emailStatus === 'failed' && 'Failed'}
+                                {!registration.emailStatus && 'Queued'}
+                              </span>
+                              <small>
+                                {registration.emailSentCount ?? 0}/{peopleIn(registration)} sent
+                                {(registration.emailFailedCount ?? 0) > 0 && <span className="admin-email-err"> ({registration.emailFailedCount} failed)</span>}
                               </small>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <span className="admin-email-dash">—</span>
-                        )}
-                      </td>
-                      <td className="admin-actions">
-                        {statusActions(registration)}
-                        <button type="button" disabled={updating === receipt} onClick={() => setEditing(registration)}><Pencil size={12} /> Edit</button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            {!visible.length && (
+                              {registration.emailLastAttemptAt ? (
+                                <small className="admin-email-time" title={registration.emailLastError || undefined}>
+                                  {formatDate(registration.emailLastAttemptAt)}
+                                </small>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span className="admin-email-dash">—</span>
+                          )}
+                        </td>
+                        <td className="admin-actions">
+                          {statusActions(registration)}
+                          <button type="button" disabled={updating === receipt} onClick={() => setEditing(registration)}><Pencil size={12} /> Edit</button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            ) : (
               <p className="admin-empty">
                 {loading ? 'Loading registrations...' : registrations.length ? 'No registrations match the selected filters.' : 'No registrations yet. Submitted teams and spot registrations will appear here.'}
               </p>
@@ -991,6 +1039,41 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
           </div>
         </section>
       )}
+
+      <dialog ref={testEmailDialog} className="admin-proof" style={{ maxWidth: '520px' }} aria-labelledby="test-email-title" onClose={() => setTestEmailOpen(false)}>
+        <header>
+          <div>
+            <span className="admin-stat-label">Transactional Email Preview</span>
+            <h2 id="test-email-title" style={{ fontSize: '24px' }}>Send Test Email</h2>
+          </div>
+          <button type="button" className="admin-proof-close" aria-label="Close" onClick={() => setTestEmailOpen(false)}><X size={18} /></button>
+        </header>
+        <form onSubmit={handleSendTestEmail} style={{ padding: '24px clamp(20px, 3vw, 32px)' }}>
+          <p className="admin-section-note" style={{ margin: '0 0 16px' }}>
+            Enter your email to receive a live sample verification email and inspect its formatting in your actual inbox.
+          </p>
+          <div className="form-group" style={{ marginBottom: '20px' }}>
+            <label htmlFor="test-email-addr">Recipient Email Address</label>
+            <input
+              id="test-email-addr"
+              className="form-input"
+              type="email"
+              required
+              autoFocus
+              placeholder="e.g. yourname@example.com"
+              value={testEmailAddr}
+              onChange={(e) => setTestEmailAddr(e.target.value)}
+            />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <button type="button" className="btn-secondary-luxury" onClick={() => setTestEmailOpen(false)} disabled={sendingTestEmail}>Cancel</button>
+            <button type="submit" className="btn-primary-luxury" disabled={sendingTestEmail || !testEmailAddr.trim()}>
+              <span>{sendingTestEmail ? 'Sending...' : 'Send Test Email'}</span>
+              <ArrowRight size={14} />
+            </button>
+          </div>
+        </form>
+      </dialog>
 
       <dialog ref={proofDialog} className="admin-proof" aria-labelledby="proof-title" onClose={() => setProofReceipt(null)}>
         {proofFor && (

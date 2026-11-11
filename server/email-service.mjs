@@ -68,146 +68,228 @@ export function renderMemberConfirmationEmail({ recipient, teamData, receipt, am
   const safeTeam = sanitizeHeader(teamData.teamName || 'Your Team')
   const safeReceipt = sanitizeHeader(receipt)
   const isLeader = recipient.role === 'leader'
+  const members = Array.isArray(teamData.members) ? teamData.members : []
+  const totalBuilders = members.length + 1
 
   const membersListHtml = [
-    `<li style="margin-bottom: 6px;"><strong>${escapeHtml(teamData.leadName)}</strong> (${escapeHtml(teamData.email)}) — <em>Team Leader</em></li>`,
-    ...(teamData.members || []).map(
-      (m) => `<li style="margin-bottom: 6px;"><strong>${escapeHtml(m.name)}</strong> (${escapeHtml(m.email)}) — <em>Member</em></li>`
+    `<tr>
+      <td style="padding: 12px 14px;${members.length > 0 ? ' border-bottom: 1px solid #1c1524;' : ''}">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+          <tr>
+            <td style="font-size: 14px; color: #f5efe3;">
+              <span style="color: #dcb872; margin-right: 6px;">◆</span> <strong>${escapeHtml(teamData.leadName)}</strong> 
+              <span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #94897c;">(${escapeHtml(teamData.email)})</span>
+            </td>
+            <td align="right" style="font-family: 'Geist Mono', monospace; font-size: 10.5px; color: #dcb872; text-transform: uppercase; letter-spacing: 1px;">
+              Leader
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>`,
+    ...members.map(
+      (m, idx) => `<tr>
+      <td style="padding: 12px 14px;${idx === members.length - 1 ? '' : ' border-bottom: 1px solid #1c1524;'}">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+          <tr>
+            <td style="font-size: 14px; color: #f5efe3;">
+              <span style="color: #b48ae0; margin-right: 6px;">◇</span> <strong>${escapeHtml(m.name)}</strong> 
+              <span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #94897c;">(${escapeHtml(m.email)})</span>
+            </td>
+            <td align="right" style="font-family: 'Geist Mono', monospace; font-size: 10.5px; color: #94897c; text-transform: uppercase; letter-spacing: 1px;">
+              Member
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>`
     ),
   ].join('')
 
   const membersListText = [
-    `- ${teamData.leadName} (${teamData.email}) [Team Leader]`,
-    ...(teamData.members || []).map((m) => `- ${m.name} (${m.email}) [Member]`),
+    `- ${teamData.leadName} (${teamData.email}) [Leader]`,
+    ...members.map((m) => `- ${m.name} (${m.email}) [Member]`),
   ].join('\n')
 
   const subject = `Registration Verified: Team ${safeTeam} — ${event.name} (${safeReceipt})`
 
   const html = `
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="color-scheme" content="dark">
+  <meta name="supported-color-schemes" content="dark">
   <title>${escapeHtml(subject)}</title>
+  
+  <!-- Web fonts with web-safe fallbacks -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Geist+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+    @media only screen and (max-width: 620px) {
+      .email-container { width: 100% !important; max-width: 100% !important; }
+      .mobile-p-20 { padding: 24px 18px !important; }
+      .mobile-title { font-size: 28px !important; line-height: 1.15 !important; }
+      .mobile-stack { display: block !important; width: 100% !important; }
+    }
+  </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: #0b0f19; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #e5e7eb;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #0b0f19; padding: 32px 12px;">
+<body style="margin: 0; padding: 0; background-color: #07060a; font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5efe3; -webkit-font-smoothing: antialiased;">
+
+  <!-- Outer Canvas (Deep Obsidian / Void) -->
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #07060a; padding: 44px 12px;">
     <tr>
       <td align="center">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; background-color: #111827; border: 1px solid #1f2937; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);">
+        
+        <!-- Main Card Container -->
+        <table role="presentation" class="email-container" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; background-color: #0e0b13; border: 1px solid #332718; border-radius: 4px; overflow: hidden; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85);">
           
-          <!-- Banner / Header -->
+          <!-- Top Celestial Gold Foil Accent Bar -->
           <tr>
-            <td style="background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #0284c7 100%); padding: 36px 28px; text-align: center; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
-              <div style="font-size: 11px; font-weight: 700; color: #38bdf8; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px;">
-                ORGANIZED BY ${escapeHtml(event.organizer.toUpperCase())}
+            <td style="height: 3px; background: #dcb872; background: linear-gradient(90deg, #94702f 0%, #dcb872 30%, #fff4d6 50%, #dcb872 70%, #94702f 100%); font-size: 1px; line-height: 1px;">&nbsp;</td>
+          </tr>
+
+          <!-- Banner / Grand Header -->
+          <tr>
+            <td class="mobile-p-20" style="background-color: #120e18; background: linear-gradient(180deg, #171120 0%, #0e0b13 100%); padding: 36px 32px 30px; text-align: center; border-bottom: 1px solid #2a2016;">
+
+              <!-- Organizer Moniker (Geist Mono) -->
+              <div style="font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10.5px; font-weight: 500; color: #dcb872; letter-spacing: 2.2px; text-transform: uppercase; margin-bottom: 12px;">
+                ✦ ${escapeHtml(event.organizer.toUpperCase())} · KGRCET ✦
               </div>
-              <h1 style="margin: 0; color: #ffffff; font-size: 26px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.2;">
-                ${escapeHtml(event.name)}
+
+              <!-- Grand Hackathon Title (Cormorant Serif Display) -->
+              <h1 class="mobile-title" style="margin: 0; font-family: 'Cormorant', Garamond, 'Times New Roman', Georgia, serif; font-size: 35px; font-weight: 300; line-height: 1.1; letter-spacing: -0.01em; color: #ffffff;">
+                KGRCET's HACKATHON <span style="font-style: italic; color: #dcb872; font-weight: 400;">2027</span>
               </h1>
-              <p style="margin: 8px 0 0 0; color: #cbd5e1; font-size: 13px; font-weight: 500; letter-spacing: 1px; text-transform: uppercase;">
+
+              <!-- Tagline (Mono Spaced) -->
+              <p style="margin: 10px 0 0 0; font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 400; color: #c2b9ab; letter-spacing: 2.4px; text-transform: uppercase;">
                 ${escapeHtml(event.tagline)}
               </p>
+
             </td>
           </tr>
 
           <!-- Content Body -->
           <tr>
-            <td style="padding: 32px 28px;">
+            <td class="mobile-p-20" style="padding: 36px 32px;">
               
-              <!-- Verification Pill -->
-              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin-bottom: 24px;">
+              <!-- Verification Pill (Website Gold & Foil Theme) -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin-bottom: 26px;">
                 <tr>
-                  <td style="background-color: #065f46; color: #34d399; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; padding: 6px 14px; border-radius: 999px; text-transform: uppercase; border: 1px solid #059669;">
-                    ✓ Registration Verified &amp; Confirmed
+                  <td style="background-color: #17130b; border: 1px solid #dcb872; padding: 6px 14px; border-radius: 2px;">
+                    <span style="font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 600; color: #f8e8c0; letter-spacing: 1.5px; text-transform: uppercase;">
+                      ✓ OFFICIAL REGISTRATION VERIFIED
+                    </span>
                   </td>
                 </tr>
               </table>
 
-              <!-- Greeting -->
-              <h2 style="margin: 0 0 14px 0; color: #f9fafb; font-size: 20px; font-weight: 700;">
-                Hello, ${escapeHtml(safeName)}!
+              <!-- Greeting (Cormorant Serif) -->
+              <h2 style="margin: 0 0 12px 0; font-family: 'Cormorant', Garamond, 'Times New Roman', Georgia, serif; font-size: 27px; font-weight: 400; color: #ffffff; letter-spacing: 0.01em; line-height: 1.2;">
+                Greetings, ${escapeHtml(safeName)}
               </h2>
-              <p style="margin: 0 0 24px 0; color: #9ca3af; font-size: 15px; line-height: 1.6;">
-                Great news! Your registration for <strong style="color: #f3f4f6;">Team ${escapeHtml(safeTeam)}</strong> has been verified by the organizing committee. Your team is officially confirmed to participate in <strong style="color: #f3f4f6;">${escapeHtml(event.name)}</strong>.
+              
+              <p style="margin: 0 0 28px 0; font-size: 15px; line-height: 1.65; color: #c2b9ab;">
+                Your registration credentials for <strong style="color: #f5efe3; font-weight: 600;">Team ${escapeHtml(safeTeam)}</strong> have been reviewed and verified by the organizing committee. Your team is officially confirmed to participate in <strong style="color: #dcb872; font-weight: 600;">${escapeHtml(event.name)}</strong>.
               </p>
 
-              <!-- Registration Details Box -->
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #0f172a; border: 1px solid #1e293b; border-radius: 8px; margin-bottom: 28px;">
+              <!-- Registration Credentials Plaque -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #120e18; border: 1px solid #332718; border-left: 3px solid #dcb872; border-radius: 3px; margin-bottom: 28px;">
                 <tr>
-                  <td style="padding: 20px;">
-                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="font-size: 14px;">
-                      <tr>
-                        <td style="padding: 6px 0; color: #64748b; width: 38%;">Registration ID:</td>
-                        <td style="padding: 6px 0; color: #38bdf8; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 700;">${escapeHtml(safeReceipt)}</td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 6px 0; color: #64748b;">Team Name:</td>
-                        <td style="padding: 6px 0; color: #f1f5f9; font-weight: 600;">${escapeHtml(safeTeam)}</td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 6px 0; color: #64748b;">Your Role:</td>
-                        <td style="padding: 6px 0; color: #f1f5f9; font-weight: 600;">${isLeader ? 'Team Leader' : 'Team Member'}</td>
-                      </tr>
-                      <tr>
-                        <td style="padding: 6px 0; color: #64748b;">Total Paid:</td>
-                        <td style="padding: 6px 0; color: #34d399; font-weight: 700;">₹${Number(amount || 0).toLocaleString('en-IN')}</td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Team Roster -->
-              <div style="margin-bottom: 28px;">
-                <h3 style="margin: 0 0 12px 0; color: #f3f4f6; font-size: 15px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-                  Team Roster (${(teamData.members || []).length + 1} Hacker${(teamData.members || []).length === 0 ? '' : 's'})
-                </h3>
-                <ul style="margin: 0; padding-left: 20px; color: #9ca3af; font-size: 14px; line-height: 1.6;">
-                  ${membersListHtml}
-                </ul>
-              </div>
-
-              <!-- Event Details Card -->
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #1e1b4b; border: 1px solid #312e81; border-radius: 8px; margin-bottom: 28px;">
-                <tr>
-                  <td style="padding: 20px;">
-                    <div style="font-size: 12px; font-weight: 700; color: #a5b4fc; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">
-                      Event Schedule &amp; Venue
+                  <td style="padding: 22px 20px;">
+                    
+                    <div style="font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10.5px; font-weight: 600; color: #dcb872; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #231b26;">
+                      REGISTRATION CREDENTIALS
                     </div>
-                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="font-size: 13.5px; color: #cbd5e1; line-height: 1.6;">
+
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="font-size: 14px;">
+                      
+                      <!-- Registration ID -->
                       <tr>
-                        <td style="padding: 4px 0; width: 24%; color: #94a3b8; vertical-align: top;"><strong>Dates:</strong></td>
-                        <td style="padding: 4px 0; color: #f8fafc;">${escapeHtml(event.dates)} (${escapeHtml(event.duration)})</td>
+                        <td style="padding: 8px 0; font-family: 'Geist Mono', monospace; font-size: 11.5px; color: #94897c; letter-spacing: 0.5px; text-transform: uppercase; width: 40%;">Registration ID:</td>
+                        <td style="padding: 8px 0; font-family: 'Geist Mono', monospace; font-size: 14px; font-weight: 600; color: #dcb872; letter-spacing: 1.5px;">${escapeHtml(safeReceipt)}</td>
                       </tr>
+
+                      <!-- Team Name -->
                       <tr>
-                        <td style="padding: 4px 0; color: #94a3b8; vertical-align: top;"><strong>Theme:</strong></td>
-                        <td style="padding: 4px 0; color: #f8fafc;">${escapeHtml(event.theme)}</td>
+                        <td style="padding: 8px 0; font-family: 'Geist Mono', monospace; font-size: 11.5px; color: #94897c; letter-spacing: 0.5px; text-transform: uppercase; border-top: 1px solid #1c1524;">Team Name:</td>
+                        <td style="padding: 8px 0; color: #f5efe3; font-weight: 600; border-top: 1px solid #1c1524;">${escapeHtml(safeTeam)}</td>
                       </tr>
+
+                      <!-- Role -->
                       <tr>
-                        <td style="padding: 4px 0; color: #94a3b8; vertical-align: top;"><strong>Venue:</strong></td>
-                        <td style="padding: 4px 0; color: #f8fafc;">${escapeHtml(event.venue)}</td>
+                        <td style="padding: 8px 0; font-family: 'Geist Mono', monospace; font-size: 11.5px; color: #94897c; letter-spacing: 0.5px; text-transform: uppercase; border-top: 1px solid #1c1524;">Designation:</td>
+                        <td style="padding: 8px 0; border-top: 1px solid #1c1524;">
+                          <span style="font-family: 'Geist Mono', monospace; font-size: 11px; font-weight: 600; color: #dcb872; background-color: #1f1814; border: 1px solid #4a3821; padding: 2px 8px; border-radius: 2px; letter-spacing: 0.8px; text-transform: uppercase;">
+                            ${isLeader ? 'TEAM LEADER' : 'TEAM MEMBER'}
+                          </span>
+                        </td>
                       </tr>
+
+                      <!-- Amount Paid -->
+                      <tr>
+                        <td style="padding: 8px 0; font-family: 'Geist Mono', monospace; font-size: 11.5px; color: #94897c; letter-spacing: 0.5px; text-transform: uppercase; border-top: 1px solid #1c1524;">Registration Fee:</td>
+                        <td style="padding: 8px 0; font-family: 'Geist Mono', monospace; font-size: 13.5px; color: #f8e8c0; font-weight: 600; border-top: 1px solid #1c1524;">₹${Number(amount || 0).toLocaleString('en-IN')} <span style="font-size: 11px; color: #94897c; font-weight: 400;">(Paid &amp; Verified)</span></td>
+                      </tr>
+
                     </table>
                   </td>
                 </tr>
               </table>
 
-              <!-- Important Check-in Instructions -->
-              <div style="background-color: #172554; border-left: 4px solid #3b82f6; padding: 16px; border-radius: 0 6px 6px 0; margin-bottom: 28px;">
-                <h4 style="margin: 0 0 6px 0; color: #93c5fd; font-size: 14px;">Important Check-In Instructions:</h4>
-                <p style="margin: 0; color: #bfdbfe; font-size: 13px; line-height: 1.5;">
-                  • Please carry your valid College Identity Card and this confirmation email (digital or printed).<br>
-                  • Keep your Registration ID (<strong>${escapeHtml(safeReceipt)}</strong>) ready at the welcome desk.<br>
-                  • Remember to bring your own laptops, chargers, and extension cords for the 36-hour sprint.
-                </p>
+              <!-- Member List -->
+              <div style="margin-bottom: 28px;">
+                <h3 style="margin: 0 0 12px 0; font-family: 'Cormorant', Garamond, 'Times New Roman', Georgia, serif; font-size: 20px; font-weight: 400; color: #f5efe3; letter-spacing: 0.02em;">
+                  Member List <span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #94897c;">(${totalBuilders} Builder${totalBuilders === 1 ? '' : 's'})</span>
+                </h3>
+                
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #0e0b13; border: 1px solid #231b26; border-radius: 3px;">
+                  ${membersListHtml}
+                </table>
               </div>
+
+              <!-- Event Schedule & Venue (Amethyst Cosmic Card) -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #140d1e; border: 1px solid #37254b; border-radius: 3px; margin-bottom: 28px;">
+                <tr>
+                  <td style="padding: 20px;">
+                    <div style="font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 600; color: #b48ae0; text-transform: uppercase; letter-spacing: 1.8px; margin-bottom: 12px;">
+                      ✦ EVENT SCHEDULE &amp; VENUE
+                    </div>
+                    
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="font-size: 13.5px; line-height: 1.6;">
+                      <tr>
+                        <td style="padding: 6px 0; width: 22%; font-family: 'Geist Mono', monospace; font-size: 11.5px; color: #94897c; text-transform: uppercase; vertical-align: top;">Dates:</td>
+                        <td style="padding: 6px 0; color: #f5efe3;">
+                          <strong style="color: #f8e8c0;">${escapeHtml(event.dates)}</strong>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; font-family: 'Geist Mono', monospace; font-size: 11.5px; color: #94897c; text-transform: uppercase; vertical-align: top; border-top: 1px solid #231633;">Theme:</td>
+                        <td style="padding: 6px 0; color: #f5efe3; border-top: 1px solid #231633;">${escapeHtml(event.theme)}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; font-family: 'Geist Mono', monospace; font-size: 11.5px; color: #94897c; text-transform: uppercase; vertical-align: top; border-top: 1px solid #231633;">Venue:</td>
+                        <td style="padding: 6px 0; color: #c2b9ab; border-top: 1px solid #231633;">${escapeHtml(event.venue)}</td>
+                      </tr>
+                    </table>
+
+                  </td>
+                </tr>
+              </table>
 
               <!-- Queries -->
-              <p style="margin: 0; color: #6b7280; font-size: 13px; line-height: 1.5;">
-                Have questions or need assistance? Reach out to the organizing team at 
-                <a href="mailto:${escapeHtml(event.contactEmail)}" style="color: #38bdf8; text-decoration: none;">${escapeHtml(event.contactEmail)}</a>.
+              <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #94897c; text-align: center;">
+                Need assistance or have travel queries? Contact the coordination team at<br>
+                <a href="mailto:${escapeHtml(event.contactEmail)}" style="color: #dcb872; text-decoration: underline; text-underline-offset: 3px; font-family: 'Geist Mono', monospace; font-size: 12.5px;">${escapeHtml(event.contactEmail)}</a>
               </p>
 
             </td>
@@ -215,20 +297,25 @@ export function renderMemberConfirmationEmail({ recipient, teamData, receipt, am
 
           <!-- Footer -->
           <tr>
-            <td style="background-color: #0f172a; border-top: 1px solid #1f2937; padding: 24px 28px; text-align: center;">
-              <p style="margin: 0 0 6px 0; color: #94a3b8; font-size: 12px;">
-                ${escapeHtml(event.name)} · ${escapeHtml(event.organizer)}
+            <td style="background-color: #07060a; border-top: 1px solid #2a2016; padding: 24px 28px; text-align: center;">
+              
+              <p style="margin: 0 0 6px 0; font-family: 'Geist Mono', monospace; font-size: 11px; color: #94897c; letter-spacing: 1.5px; text-transform: uppercase;">
+                ${escapeHtml(event.name)} · ${escapeHtml(event.organizer.toUpperCase())}
               </p>
-              <p style="margin: 0; color: #475569; font-size: 11px;">
-                This is an automated confirmation sent to verified participants.
+              
+              <p style="margin: 0; font-size: 11px; color: #5a534c; line-height: 1.5;">
+                This is an official verification credential dispatched to registered participants.
               </p>
+
             </td>
           </tr>
 
         </table>
+
       </td>
     </tr>
   </table>
+
 </body>
 </html>
   `.trim()
@@ -239,31 +326,26 @@ ${event.name} — REGISTRATION VERIFIED
 ${event.tagline}
 ==================================================
 
-Hello, ${safeName}!
+Greetings, ${safeName}
 
-Your registration for Team "${safeTeam}" has been verified and confirmed by the organizing committee.
+Your registration credentials for Team "${safeTeam}" have been reviewed and verified by the organizing committee. Your team is officially confirmed to participate in ${event.name}.
 
-REGISTRATION DETAILS:
+REGISTRATION CREDENTIALS:
 --------------------------------------------------
 Registration ID : ${safeReceipt}
 Team Name       : ${safeTeam}
-Your Role       : ${isLeader ? 'Team Leader' : 'Team Member'}
-Total Paid      : ₹${Number(amount || 0).toLocaleString('en-IN')}
+Designation     : ${isLeader ? 'TEAM LEADER' : 'TEAM MEMBER'}
+Registration Fee: ₹${Number(amount || 0).toLocaleString('en-IN')} (Paid & Verified)
 
-TEAM ROSTER:
+MEMBER LIST:
 --------------------------------------------------
 ${membersListText}
 
 EVENT SCHEDULE & VENUE:
 --------------------------------------------------
-Dates   : ${event.dates} (${event.duration})
-Theme   : ${event.theme}
-Venue   : ${event.venue}
-
-CHECK-IN INSTRUCTIONS:
-- Carry your valid College Identity Card.
-- Have your Registration ID (${safeReceipt}) ready at the check-in desk.
-- Bring your laptops, chargers, and build essentials.
+Dates : ${event.dates}
+Theme : ${event.theme}
+Venue : ${event.venue}
 
 Queries: ${event.contactEmail}
 
@@ -273,11 +355,6 @@ Organized by ${event.organizer}
 
   return { subject, html, text }
 }
-
-/**
- * Creates and validates the Nodemailer Brevo SMTP transport.
- * Falls back to dry-run simulation mode when SMTP credentials are not configured.
- */
 export function createSmtpTransport(env = process.env) {
   const host = sanitizeHeader(env.SMTP_HOST || 'smtp-relay.brevo.com')
   const port = Number(env.SMTP_PORT || 587)

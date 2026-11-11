@@ -404,7 +404,7 @@ test('spot registration works while submissions are closed and edits are validat
   assert.equal(registration.data.phone, '+919876543210')
   assert.equal(registration.data.teamSize, '2')
   assert.equal(registration.data.extra, undefined)
-  assert.match(registration.receipt, /^REG-[A-F0-9]{16}$/)
+  assert.match(registration.receipt, /^\d{4}$/)
   assert.equal((await f.call('POST', '/api/admin/registrations', { data: complete(), paymentMethod: 'cash' }, cookie)).status, 400)
   assert.equal((await f.call('POST', '/api/admin/registrations', { data: { ...complete(), email: 'bad' }, paymentMethod: 'cash' }, cookie)).status, 400)
   assert.equal((await f.call('POST', '/api/admin/registrations', {}, cookie)).status, 400)
@@ -833,4 +833,22 @@ test('production files are served with their real content types', async (t) => {
     assert.match(page.headers.get('content-type'), /text\/html/)
     assert.equal(page.headers.get('x-frame-options'), 'DENY')
   }
+})
+
+test('admin test-email requires valid session and email, sending sample confirmation', async (t) => {
+  const f = await adminFixture(t)
+  const cookie = await f.login()
+
+  // Unauthenticated
+  assert.equal((await f.call('POST', '/api/admin/test-email', { email: 'admin@example.com' })).status, 401)
+
+  // Authenticated, invalid email
+  const badRes = await f.call('POST', '/api/admin/test-email', { email: 'invalid-email' }, cookie)
+  assert.equal(badRes.status, 400)
+
+  // Authenticated, valid email (dry run when SMTP credentials not provided)
+  const goodRes = await f.call('POST', '/api/admin/test-email', { email: 'test.leader@example.com' }, cookie)
+  assert.equal(goodRes.status, 200)
+  assert.equal(goodRes.body.ok, true)
+  assert.equal(goodRes.body.dryRun, true)
 })

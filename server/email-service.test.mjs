@@ -108,11 +108,11 @@ test('renderMemberConfirmationEmail generates personalized branding for leader a
 
   assert.match(leadMail.subject, /Registration Verified: Team CyberKnights/)
   assert.match(leadMail.subject, /REG-1122334455667788/)
-  assert.match(leadMail.html, /Hello, Jashanth Lead/)
-  assert.match(leadMail.html, /Team Leader/)
+  assert.match(leadMail.html, /Greetings, Jashanth Lead/)
+  assert.match(leadMail.html, /TEAM LEADER/)
   assert.match(leadMail.html, /REG-1122334455667788/)
   assert.match(leadMail.html, /KGRCET(?:'|&#39;)s HACKATHON 2027/)
-  assert.match(leadMail.html, /Cybersecurity &amp; Ethical Hacking Club/)
+  assert.match(leadMail.html, /CYBERSECURITY &amp; ETHICAL HACKING CLUB/i)
   assert.match(leadMail.text, /Jashanth Lead/)
 
   // Render for Member
@@ -123,8 +123,8 @@ test('renderMemberConfirmationEmail generates personalized branding for leader a
     amount: 1947,
   })
 
-  assert.match(memberMail.html, /Hello, Member Alice/)
-  assert.match(memberMail.html, /Team Member/)
+  assert.match(memberMail.html, /Greetings, Member Alice/)
+  assert.match(memberMail.html, /TEAM MEMBER/)
   assert.match(memberMail.html, /CyberKnights/)
 })
 

@@ -376,6 +376,7 @@ function App() {
   }, [menuOpen])
 
   useEffect(() => {
+    if (isSubpage) return
     const onScroll = () => {
       setScrolled(window.scrollY > 24)
       // The whole interface crosses over once the gate has opened around the viewer.
@@ -385,7 +386,7 @@ function App() {
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
-  }, [])
+  }, [isSubpage])
 
   const toggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark'

@@ -5,7 +5,7 @@ import { mkdirSync } from 'node:fs'
 import { extname, join, normalize, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
-import { initEmailTables, createSmtpTransport, enqueueConfirmationEmails, processEmailQueue } from './email-service.mjs'
+import { initEmailTables, createSmtpTransport, enqueueConfirmationEmails, processEmailQueue, isValidEmail, renderMemberConfirmationEmail, sanitizeHeader, sanitizeErrorMessage } from './email-service.mjs'
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const port = Number(process.env.PORT || 3001)
@@ -326,6 +326,21 @@ function paymentProofFromDataUrl(value) {
 
 function publicDraft(row) {
   return row && { data: JSON.parse(row.data), step: row.step, status: row.status, receipt: row.receipt, revision: row.revision }
+}
+
+export function generateNextReceipt(db) {
+  const row = db.prepare(`
+    SELECT receipt FROM drafts 
+    WHERE receipt GLOB '[0-9][0-9][0-9][0-9]' 
+    ORDER BY CAST(receipt AS INTEGER) DESC 
+    LIMIT 1
+  `).get()
+
+  if (!row || !row.receipt) {
+    return '1001'
+  }
+  const nextNumber = Number(row.receipt) + 1
+  return String(nextNumber).padStart(4, '0')
 }
 
 function publicRegistration(row) {
@@ -854,7 +869,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       const now = Date.now()
       const data = cleanRegistration(input.data)
       const tokenHash = hashToken(randomBytes(32).toString('hex'))
-      const receipt = `REG-${randomBytes(8).toString('hex').toUpperCase()}`
+      const receipt = generateNextReceipt(db)
       db.prepare('INSERT INTO sessions VALUES (?, ?, ?)').run(tokenHash, now, now + cookieTtlSeconds * 1000)
       db.prepare("INSERT INTO drafts (token_hash, data, step, status, receipt, revision, source, review_status, reviewed_by, reviewed_at, submitted_at, payment_method, utr_number, amount_rupees, proof_mime, proof_data, email_first_sent_at) VALUES (?, ?, 2, 'submitted', ?, 0, 'spot', 'valid', ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         .run(tokenHash, JSON.stringify(data), receipt, admin.email, now, now, payment.method, payment.utr, amountFor(data), payment.proof?.mime ?? null, payment.proof?.image ?? null, now)
@@ -869,7 +884,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
     }
 
     // 10. Payment screenshot
-    const proofMatch = /^\/api\/admin\/registrations\/(REG-[A-F0-9]{16})\/payment-proof$/.exec(url.pathname)
+    const proofMatch = /^\/api\/admin\/registrations\/([^/]+)\/payment-proof$/.exec(url.pathname)
     if (proofMatch && req.method === 'GET') {
       const proof = db.prepare("SELECT proof_mime, proof_data FROM drafts WHERE receipt = ? AND status = 'submitted'").get(proofMatch[1])
       if (!proof?.proof_data) return error(res, 404, 'no payment screenshot for this registration')
@@ -878,7 +893,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
     }
 
     // 11. Update registration or status
-    const match = /^\/api\/admin\/registrations\/(REG-[A-F0-9]{16})(\/status)?$/.exec(url.pathname)
+    const match = /^\/api\/admin\/registrations\/([^/]+)(\/status)?$/.exec(url.pathname)
     if (match && req.method === 'PUT') {
       const [, receipt, isStatus] = match
       const existing = allRegistrations().find((row) => row.receipt === receipt)
@@ -924,7 +939,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
     }
 
     // 12. Manual Resend Email
-    const resendMatch = /^\/api\/admin\/registrations\/(REG-[A-F0-9]{16})\/resend-email$/.exec(url.pathname)
+    const resendMatch = /^\/api\/admin\/registrations\/([^/]+)\/resend-email$/.exec(url.pathname)
     if (resendMatch && req.method === 'POST') {
       const receipt = resendMatch[1]
       const existing = allRegistrations().find((row) => row.receipt === receipt)
@@ -941,6 +956,47 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       } catch (err) {
         console.error('[email-queue] Manual resend failed to enqueue:', err.message)
         return error(res, 500, 'Could not enqueue confirmation emails')
+      }
+    }
+
+    // 13. Test Email
+    if (url.pathname === '/api/admin/test-email' && req.method === 'POST') {
+      const input = await readJsonBody(req, maxLoginBodyBytes)
+      const targetEmail = typeof input?.email === 'string' ? input.email.trim().toLowerCase() : ''
+      if (!targetEmail || !isValidEmail(targetEmail)) {
+        return error(res, 400, 'A valid email address is required.')
+      }
+
+      const sampleTeam = {
+        teamName: 'CyberKnights (Sample)',
+        leadName: admin.name || 'Test Participant',
+        email: targetEmail,
+        members: [
+          { name: 'Alex Rivera', email: 'alex.test@kgrcet.edu.in' },
+          { name: 'Sai Vaibhav', email: 'vaibhav.test@kgrcet.edu.in' },
+        ],
+      }
+      const sampleContent = renderMemberConfirmationEmail({
+        recipient: { name: admin.name || 'Test Participant', role: 'leader' },
+        teamData: sampleTeam,
+        receipt: '1001',
+        amount: 1500,
+      })
+
+      const mailer = createSmtpTransport(process.env)
+      try {
+        const sendResult = await mailer.sendMail({
+          from: mailer.from,
+          to: `"${sanitizeHeader(admin.name || 'Test Participant')}" <${targetEmail}>`,
+          subject: `[TEST] ${sampleContent.subject}`,
+          html: sampleContent.html,
+          text: sampleContent.text,
+        })
+        return json(res, 200, { ok: true, messageId: sendResult.messageId, dryRun: !mailer.isConfigured })
+      } catch (sendErr) {
+        const safeError = sanitizeErrorMessage(sendErr.message, [process.env.SMTP_PASS])
+        console.error('[test-email] Failed to send test email:', safeError)
+        return error(res, 500, `Failed to send email: ${safeError}`)
       }
     }
 
@@ -1016,7 +1072,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         const { payment, problem: paymentIssue } = readPayment({ ...input, paymentMethod: 'upi' }, { requireProof: true })
         if (paymentIssue) return error(res, 400, paymentIssue)
         const data = cleanRegistration(draftData)
-        const receipt = `REG-${randomBytes(8).toString('hex').toUpperCase()}`
+        const receipt = generateNextReceipt(db)
         db.prepare("UPDATE drafts SET status = 'submitted', receipt = ?, submitted_at = ?, data = ?, payment_method = 'upi', utr_number = ?, amount_rupees = ?, proof_mime = ?, proof_data = ?, revision = revision + 1 WHERE token_hash = ? AND revision = ?")
           .run(receipt, Date.now(), JSON.stringify(data), payment.utr, amountFor(data), payment.proof.mime, payment.proof.image, tokenHash, input.revision)
         notifyAdminClients('registration_submitted')
