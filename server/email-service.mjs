@@ -13,11 +13,13 @@ export function isValidEmail(email) {
 }
 
 /**
- * Sanitizes header values to prevent CRLF injection attacks.
+ * Sanitizes header values to prevent CRLF injection attacks, header breakout,
+ * and recipient injection via quotes/backslashes.
  */
 export function sanitizeHeader(value) {
   return String(value || '')
     .replace(/[\r\n\t]/g, ' ')
+    .replace(/["\\]/g, '')
     .trim()
 }
 

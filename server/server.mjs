@@ -2,10 +2,75 @@ import http from 'node:http'
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
 import { mkdirSync } from 'node:fs'
-import { extname, join, normalize, resolve } from 'node:path'
+import { extname, join, normalize, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { initEmailTables, createSmtpTransport, enqueueConfirmationEmails, processEmailQueue, isValidEmail, renderMemberConfirmationEmail, sanitizeHeader, sanitizeErrorMessage } from './email-service.mjs'
+
+export class RateLimiter {
+  constructor({ windowMs, maxRequests }) {
+    this.windowMs = windowMs
+    this.maxRequests = maxRequests
+    this.hits = new Map()
+    this.cleanupInterval = setInterval(() => this.cleanup(), Math.max(windowMs, 60000))
+    if (this.cleanupInterval.unref) this.cleanupInterval.unref()
+  }
+
+  cleanup() {
+    const cutoff = Date.now() - this.windowMs
+    for (const [key, timestamps] of this.hits.entries()) {
+      const active = timestamps.filter((t) => t > cutoff)
+      if (active.length === 0) {
+        this.hits.delete(key)
+      } else {
+        this.hits.set(key, active)
+      }
+    }
+  }
+
+  check(key) {
+    const now = Date.now()
+    const cutoff = now - this.windowMs
+    const timestamps = (this.hits.get(key) || []).filter((t) => t > cutoff)
+    const allowed = timestamps.length < this.maxRequests
+    if (allowed) {
+      timestamps.push(now)
+      this.hits.set(key, timestamps)
+    }
+    const remaining = Math.max(0, this.maxRequests - timestamps.length)
+    const resetTime = timestamps.length ? Math.ceil((timestamps[0] + this.windowMs - now) / 1000) : Math.ceil(this.windowMs / 1000)
+    return {
+      allowed,
+      limit: this.maxRequests,
+      remaining,
+      retryAfterSeconds: allowed ? 0 : Math.max(1, resetTime),
+    }
+  }
+
+  destroy() {
+    clearInterval(this.cleanupInterval)
+    this.hits.clear()
+  }
+}
+
+export function containsDangerousHtml(str) {
+  if (typeof str !== 'string') return false
+  const s = str.trim()
+  if (!s) return false
+  if (/<\s*\/?[a-z][\w-]*(\s+[^>]*)?\/?>/i.test(s)) return true
+  if (/(?:on\w+\s*=|javascript\s*:|vbscript\s*:|data\s*:\s*text\/html)/i.test(s)) return true
+  return false
+}
+
+export function sanitizeInputText(value, maxLength = 200) {
+  if (value === null || value === undefined) return ''
+  return String(value)
+    .replace(/[\x00-\x1F\x7F]/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF\u202A-\u202E\u2066-\u2069]/g, '')
+    .normalize('NFC')
+    .trim()
+    .slice(0, maxLength)
+}
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const port = Number(process.env.PORT || 3001)
@@ -293,13 +358,22 @@ function applySecurityHeaders(req, res, pathname = '', secure = false) {
   res.setHeader('X-Content-Type-Options', 'nosniff')
   res.setHeader('X-Frame-Options', 'DENY')
   res.setHeader('Referrer-Policy', 'same-origin')
+  res.setHeader('X-XSS-Protection', '0')
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), screen-wake-lock=()')
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin')
+  res.setHeader('X-Permitted-Cross-Domain-Policies', 'none')
+  res.setHeader('X-DNS-Prefetch-Control', 'off')
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self';"
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self';"
   )
 
   if (pathname.startsWith('/api/admin/')) {
     res.setHeader('Cache-Control', 'no-store')
+  } else if (pathname.startsWith('/api/')) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate')
+    res.setHeader('Pragma', 'no-cache')
   }
 
   const isHttps =
@@ -373,6 +447,7 @@ function validateDraftShape(data) {
     if (data[f] !== undefined && (typeof data[f] !== 'string' || data[f].length > 200)) return 'all team fields must be short strings'
   }
   if (!Array.isArray(data.members)) return 'members must be an array'
+  if (data.members.length > 50) return 'team member count cannot exceed 50'
   for (const member of data.members) {
     if (!member || typeof member !== 'object' || Array.isArray(member)) return 'member details are invalid'
     if (['name', 'email', 'college'].some((field) => typeof member[field] !== 'string' || member[field].length > 200)) return 'member details are invalid'
@@ -380,6 +455,21 @@ function validateDraftShape(data) {
       if (member[f] !== undefined && (typeof member[f] !== 'string' || member[f].length > 200)) return 'member details are invalid'
     }
   }
+
+  // Check for HTML/Script injection in all string fields
+  const stringsToCheck = [
+    data.teamName, data.college, data.leadName,
+    data.collegeCode, data.rollNumber, data.gender, data.year, data.courseName, data.foodPreference,
+  ]
+  for (const member of data.members) {
+    if (member && typeof member === 'object') {
+      stringsToCheck.push(member.name, member.college, member.phone, member.rollNumber, member.gender, member.year, member.collegeCode, member.courseName, member.foodPreference)
+    }
+  }
+  if (stringsToCheck.some((s) => typeof s === 'string' && containsDangerousHtml(s))) {
+    return 'HTML tags or script payloads are not permitted in registration fields'
+  }
+
   return null
 }
 
@@ -388,7 +478,7 @@ function validateData(data, rules) {
   if (shapeProblem) return shapeProblem
   const fields = ['teamName', 'college', 'leadName', 'email', 'phone']
   if (fields.some((field) => data[field].trim().length === 0)) return 'all team fields are required'
-  if (!/^\S+@\S+\.\S+$/.test(data.email) || data.email.length > 254) return 'email is invalid'
+  if (!isValidEmail(data.email)) return 'email is invalid'
   if (!/^\d+$/.test(data.teamSize)) return 'teamSize must be a numeric string'
   const teamSize = Number(data.teamSize)
   if (!/^\+?[1-9]\d{7,14}$/.test(data.phone)) return 'phone is invalid'
@@ -398,7 +488,7 @@ function validateData(data, rules) {
   const emails = new Set([data.email.trim().toLowerCase()])
   for (const member of data.members) {
     if (['name', 'email', 'college'].some((field) => member[field].trim() === '')) return 'member details are required'
-    if (!/^\S+@\S+\.\S+$/.test(member.email) || member.email.length > 254) return 'member email is invalid'
+    if (!isValidEmail(member.email)) return 'member email is invalid'
     const email = member.email.trim().toLowerCase()
     if (emails.has(email)) return 'member and lead emails must be unique'
     emails.add(email)
@@ -407,11 +497,11 @@ function validateData(data, rules) {
 }
 
 function cleanRegistration(data) {
-  const text = (value) => (value ? String(value).trim() : '')
+  const text = (value) => sanitizeInputText(value, 200)
   const member = (m) => {
     const res = {
       name: text(m.name),
-      email: text(m.email),
+      email: text(m.email).toLowerCase(),
       college: text(m.college),
     }
     for (const key of ['phone', 'rollNumber', 'gender', 'year', 'collegeCode', 'courseName', 'foodPreference']) {
@@ -424,7 +514,7 @@ function cleanRegistration(data) {
     teamSize: String(data.members.length + 1),
     college: text(data.college),
     leadName: text(data.leadName),
-    email: text(data.email),
+    email: text(data.email).toLowerCase(),
     phone: (data.phone || '').replace(/[\s().-]/g, ''),
     members: data.members.map(member),
   }
@@ -451,6 +541,9 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
   mkdirSync(resolve(dbPath, '..'), { recursive: true })
   const db = new DatabaseSync(dbPath)
   db.exec(`PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;
+    PRAGMA foreign_keys = ON;
+    PRAGMA trusted_schema = OFF;
+    PRAGMA cell_size_check = ON;
     CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS drafts (token_hash TEXT PRIMARY KEY REFERENCES sessions(token_hash) ON DELETE CASCADE, data TEXT NOT NULL, step INTEGER NOT NULL, status TEXT NOT NULL, receipt TEXT, revision INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS admin_sessions (
@@ -524,6 +617,11 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS drafts_utr_number ON drafts(utr_number) WHERE utr_number IS NOT NULL')
 
   initEmailTables(db)
+
+  const apiLimiter = new RateLimiter({ windowMs: 60 * 1000, maxRequests: 300 })
+  const loginLimiter = new RateLimiter({ windowMs: 15 * 60 * 1000, maxRequests: 25 })
+  const submitLimiter = new RateLimiter({ windowMs: 10 * 60 * 1000, maxRequests: 15 })
+  const draftLimiter = new RateLimiter({ windowMs: 60 * 1000, maxRequests: 60 })
 
   const adminEventClients = new Set()
 
@@ -782,6 +880,12 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
     // 2. Public login endpoint
     if (url.pathname === '/api/admin/login') {
       if (req.method !== 'POST') return error(res, 405, 'method not allowed')
+      const ip = clientIp(req)
+      const loginCheck = loginLimiter.check(ip)
+      if (!loginCheck.allowed) {
+        res.setHeader('Retry-After', String(loginCheck.retryAfterSeconds))
+        return error(res, 429, 'Too many login attempts. Please wait before trying again.')
+      }
       return adminLogin(req, res)
     }
 
@@ -884,16 +988,21 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
     }
 
     // 10. Payment screenshot
-    const proofMatch = /^\/api\/admin\/registrations\/([^/]+)\/payment-proof$/.exec(url.pathname)
+    const proofMatch = /^\/api\/admin\/registrations\/([a-zA-Z0-9_-]{1,32})\/payment-proof$/.exec(url.pathname)
     if (proofMatch && req.method === 'GET') {
       const proof = db.prepare("SELECT proof_mime, proof_data FROM drafts WHERE receipt = ? AND status = 'submitted'").get(proofMatch[1])
       if (!proof?.proof_data) return error(res, 404, 'no payment screenshot for this registration')
-      res.writeHead(200, { 'Content-Type': proof.proof_mime, 'Content-Disposition': 'inline', 'Cache-Control': 'no-store' })
+      res.writeHead(200, {
+        'Content-Type': proof.proof_mime,
+        'Content-Disposition': `inline; filename="receipt-${proofMatch[1]}-proof"`,
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+      })
       return res.end(Buffer.from(proof.proof_data))
     }
 
     // 11. Update registration or status
-    const match = /^\/api\/admin\/registrations\/([^/]+)(\/status)?$/.exec(url.pathname)
+    const match = /^\/api\/admin\/registrations\/([a-zA-Z0-9_-]{1,32})(\/status)?$/.exec(url.pathname)
     if (match && req.method === 'PUT') {
       const [, receipt, isStatus] = match
       const existing = allRegistrations().find((row) => row.receipt === receipt)
@@ -939,7 +1048,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
     }
 
     // 12. Manual Resend Email
-    const resendMatch = /^\/api\/admin\/registrations\/([^/]+)\/resend-email$/.exec(url.pathname)
+    const resendMatch = /^\/api\/admin\/registrations\/([a-zA-Z0-9_-]{1,32})\/resend-email$/.exec(url.pathname)
     if (resendMatch && req.method === 'POST') {
       const receipt = resendMatch[1]
       const existing = allRegistrations().find((row) => row.receipt === receipt)
@@ -1022,7 +1131,12 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       chunks.push(chunk)
     }
     try {
-      return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      return JSON.parse(Buffer.concat(chunks).toString('utf8'), (key, value) => {
+        if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+          return undefined
+        }
+        return value
+      })
     } catch {
       const err = new Error('invalid JSON')
       err.statusCode = 400
@@ -1040,10 +1154,35 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       }
 
       if (url.pathname.startsWith('/api/')) {
+        const ip = clientIp(req)
+        const apiCheck = apiLimiter.check(ip)
+        if (!apiCheck.allowed) {
+          res.setHeader('Retry-After', String(apiCheck.retryAfterSeconds))
+          res.setHeader('RateLimit-Limit', String(apiCheck.limit))
+          res.setHeader('RateLimit-Remaining', '0')
+          res.setHeader('RateLimit-Reset', String(apiCheck.retryAfterSeconds))
+          return error(res, 429, 'Too many requests. Please slow down and try again later.')
+        }
+
         if (req.method !== 'GET' && !isSameOrigin(req, secure)) return error(res, 403, 'same-origin request required')
         if (!['GET', 'PUT', 'POST'].includes(req.method)) return error(res, 405, 'method not allowed')
         if (url.pathname.startsWith('/api/admin/')) return await adminApi(req, res, url)
         if (url.pathname !== '/api/registration' && url.pathname !== '/api/registration/submit') return error(res, 404, 'not found')
+
+        if (url.pathname === '/api/registration' && req.method === 'PUT') {
+          const draftCheck = draftLimiter.check(ip)
+          if (!draftCheck.allowed) {
+            res.setHeader('Retry-After', String(draftCheck.retryAfterSeconds))
+            return error(res, 429, 'Too many draft updates. Please slow down.')
+          }
+        } else if (url.pathname === '/api/registration/submit' && req.method === 'POST') {
+          const submitCheck = submitLimiter.check(ip)
+          if (!submitCheck.allowed) {
+            res.setHeader('Retry-After', String(submitCheck.retryAfterSeconds))
+            return error(res, 429, 'Too many submissions. Please wait before submitting again.')
+          }
+        }
+
         const tokenHash = req.method === 'GET' ? sessionFor(req, res) : existingSession(req)
         if (!tokenHash) return error(res, 401, 'resume cookie required')
         const current = () => db.prepare('SELECT data, step, status, receipt, revision FROM drafts WHERE token_hash = ?').get(tokenHash)
@@ -1079,16 +1218,47 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         return json(res, 200, { draft: publicDraft(current()) })
       }
       if (req.method !== 'GET') return error(res, 404, 'not found')
+
+      // Block paths with null bytes
+      if (req.url.includes('%00') || req.url.includes('\0')) {
+        return error(res, 400, 'invalid path')
+      }
+
+      // Block direct attempts to probe hidden dotfiles (.env, .git, .DS_Store, etc.)
+      const pathSegments = url.pathname.split('/')
+      if (pathSegments.some((seg) => seg.startsWith('.') && seg !== '.' && seg !== '..' && seg !== '.well-known')) {
+        return error(res, 404, 'not found')
+      }
+
+      const distDir = resolve(root, 'dist')
       const requested = url.pathname === '/' || url.pathname === '/register' ? 'index.html' : url.pathname.slice(1)
-      const file = resolve(root, 'dist', normalize(requested))
-      if (!file.startsWith(resolve(root, 'dist'))) return error(res, 404, 'not found')
+      const file = resolve(distDir, normalize(requested))
+
+      // Strict directory traversal check
+      if (file !== distDir && !file.startsWith(distDir + sep)) {
+        return error(res, 404, 'not found')
+      }
+
       let filePath = file
-      try { await stat(filePath) } catch { filePath = join(root, 'dist', 'index.html') }
+      try {
+        const fileStat = await stat(filePath)
+        if (fileStat.isDirectory()) {
+          filePath = join(distDir, 'index.html')
+        }
+      } catch {
+        filePath = join(distDir, 'index.html')
+      }
+
       const content = await readFile(filePath)
       res.writeHead(200, { 'Content-Type': contentTypes[extname(filePath).toLowerCase()] || 'application/octet-stream' })
       res.end(content)
     } catch (err) {
-      error(res, err.statusCode || (err.message === 'request body too large' ? 413 : 400), err.message || 'invalid request')
+      const statusCode = err.statusCode || (err.message === 'request body too large' ? 413 : (err.message === 'invalid JSON' || err.message === 'JSON body required' ? 400 : 500))
+      const safeMessage = statusCode === 500 ? 'Internal server error' : (err.message || 'invalid request')
+      if (statusCode === 500) {
+        console.error('[server error]', err)
+      }
+      error(res, statusCode, safeMessage)
     }
   })
   app.on('close', () => {
@@ -1096,6 +1266,10 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       try { client.end() } catch {}
     }
     adminEventClients.clear()
+    apiLimiter.destroy()
+    loginLimiter.destroy()
+    submitLimiter.destroy()
+    draftLimiter.destroy()
     db.close()
   })
   return app

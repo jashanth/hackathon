@@ -116,9 +116,9 @@ const sumOf = (list: AdminRegistration[]) => list.reduce((total, registration) =
 // The revision changes whenever an edit may have replaced the screenshot.
 const proofUrl = ({ receipt, revision }: AdminRegistration) => `/api/admin/registrations/${receipt}/payment-proof?v=${revision}`
 
-// A leading =, +, - or @ would run as a formula when the file is opened in a spreadsheet.
+// A leading =, +, -, @, |, or % would run as a formula when the file is opened in a spreadsheet (CSV / DDE injection).
 function csvCell(value: string) {
-  const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value
+  const safe = /^[=+\-@\t\r|%]/.test(value) ? `'${value}` : value
   return `"${safe.replace(/"/g, '""')}"`
 }
 

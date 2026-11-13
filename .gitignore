@@ -20,6 +20,8 @@ data/
 .env
 .env.*
 !.env.example
+security.md
+
 
 # Logs
 logs/
