@@ -12,6 +12,7 @@ import {
   Clock,
   Coffee,
   Cpu,
+  ExternalLink,
   Gamepad2,
   Gift,
   Globe,
@@ -324,6 +325,17 @@ const marqueeText = <>
   Organized by the <strong>Department of Computer Science and Engineering</strong>, <strong>KG Reddy College of Engineering and Technology</strong>. Led by the <strong>Cybersecurity &amp; Ethical Hacking Club</strong>, in association with <strong>Blockchain Club</strong> and <strong>CSI Student Chapter</strong>.
 </>
 
+interface ProblemStatement {
+  id: string
+  trackId: string
+  statementCode: string
+  title: string
+  category?: string
+  description?: string
+  pdfUrl: string
+  displayOrder?: number
+}
+
 function App() {
   const pathname = window.location.pathname.replace(/\/+$/, '')
   const isRegistration = pathname === '/register'
@@ -332,9 +344,37 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const [realm, setRealm] = useState<'void' | 'world'>(isSubpage ? 'world' : 'void')
+  const [selectedTrack, setSelectedTrack] = useState<(typeof tracks)[number] | null>(null)
+  const [problemStatements, setProblemStatements] = useState<ProblemStatement[]>([])
+  const [registrationOpen, setRegistrationOpen] = useState(true)
+  const [problemStatementsReleased, setProblemStatementsReleased] = useState(false)
   const activeSection = useActiveSection(!isSubpage)
 
   useSurfaceEffects()
+
+  useEffect(() => {
+    fetch('/api/problem-statements')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.problemStatements) setProblemStatements(data.problemStatements)
+        if (data?.registrationOpen !== undefined) setRegistrationOpen(data.registrationOpen)
+        if (data?.problemStatementsReleased !== undefined) setProblemStatementsReleased(data.problemStatementsReleased)
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!selectedTrack) return
+    document.body.classList.add('modal-open')
+    const closeOnEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedTrack(null)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.body.classList.remove('modal-open')
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [selectedTrack])
 
   // Default theme is dark on every device; preserve user manual choice
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -451,10 +491,17 @@ function App() {
             </button>
 
             {!isSubpage && <>
-            <a href="/register" className="btn-header-register">
-              <span>Register</span>
-              <Sparkles size={14} />
-            </a>
+            {registrationOpen ? (
+              <a href="/register" className="btn-header-register">
+                <span>Register</span>
+                <Sparkles size={14} />
+              </a>
+            ) : (
+              <span className="btn-header-register is-closed" aria-disabled="true" title="Registrations are closed">
+                <span>Registrations Closed</span>
+                <Lock size={12} />
+              </span>
+            )}
 
             <button
               className="mobile-menu-trigger"
@@ -498,10 +545,17 @@ function App() {
               ))}
             </div>
             <div className="mobile-drawer-footer">
-              <a href="/register" className="btn-primary-luxury is-wide">
-                <span>Register</span>
-                <Sparkles size={15} />
-              </a>
+              {registrationOpen ? (
+                <a href="/register" className="btn-primary-luxury is-wide">
+                  <span>Register</span>
+                  <Sparkles size={15} />
+                </a>
+              ) : (
+                <span className="btn-primary-luxury is-wide is-closed" aria-disabled="true">
+                  <span>Registrations Closed</span>
+                  <Lock size={14} />
+                </span>
+              )}
             </div>
           </motion.div>
         )}
@@ -531,13 +585,20 @@ function App() {
 
                 {/* Action Buttons */}
                 <div className="hero-cta-group">
-                  <a href="/register" className="btn-primary-luxury">
-                    <span>Register</span>
-                    <ArrowRight size={16} />
-                  </a>
+                  {registrationOpen ? (
+                    <a href="/register" className="btn-primary-luxury">
+                      <span>Register</span>
+                      <ArrowRight size={16} />
+                    </a>
+                  ) : (
+                    <span className="btn-primary-luxury is-closed" aria-disabled="true" title="Registrations are closed">
+                      <span>Registrations Closed</span>
+                      <Lock size={15} />
+                    </span>
+                  )}
 
                   <a href="#tracks" className="btn-secondary-luxury">
-                    <span>Explore 10 Challenge Tracks</span>
+                    <span>Explore 5 Challenge Tracks</span>
                     <ArrowUpRight size={16} />
                   </a>
                 </div>
@@ -693,22 +754,38 @@ function App() {
                 icon={<Terminal size={12} />}
                 tone="cyan"
                 pill="CHALLENGE FIELDS"
-                title={<>10 <span>Hackathon Tracks</span></>}
+                title={<>5 <span>Hackathon Tracks</span></>}
               >
-                Specific problem statements within these domains will be released on-spot. These provisional categories are subject to official confirmation; specific problem statements will be announced on the day of the event.
+                Click on any track to view domain details, explore focus areas, and view official challenge problem statements. Problem statements will be revealed live at the hackathon.
               </SectionHeader>
             </div>
 
             <div className="tracks-grid">
               {tracks.map((track) => (
-                <Reveal className="track-card" key={track.id}>
+                <div
+                  className="track-card"
+                  key={track.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedTrack(track)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      setSelectedTrack(track)
+                    }
+                  }}
+                  aria-haspopup="dialog"
+                  aria-label={`${track.title} - Click for details`}
+                >
                   <div className="track-card-header">
                     <span className="track-num-badge">{track.number}</span>
-                    <span className="track-status">{track.status}</span>
+                    <span className="track-action-badge">
+                      Click for details <ArrowUpRight size={13} />
+                    </span>
                   </div>
 
                   <h3 className="track-title">{track.title}</h3>
-                </Reveal>
+                </div>
               ))}
             </div>
           </div>
@@ -924,6 +1001,155 @@ function App() {
           </div>
         </footer>
       )}
+
+      {/* Track Details & Problem Statements Pop-up Modal */}
+      <AnimatePresence>
+        {selectedTrack && (
+          <div
+            className="track-modal-backdrop"
+            onClick={() => setSelectedTrack(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="track-modal-title"
+          >
+            <motion.div
+              className="track-modal-container"
+              onClick={(e) => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.94, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 16 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <div className="track-modal-header">
+                <div className="track-modal-title-group">
+                  <span className="track-modal-pill">TRACK {selectedTrack.number}</span>
+                  <h2 id="track-modal-title" className="track-modal-title">
+                    {selectedTrack.title}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  className="track-modal-close"
+                  onClick={() => setSelectedTrack(null)}
+                  aria-label="Close track details"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="track-modal-content">
+                {/* Unified Description & Focus Areas Box */}
+                <div className="track-desc-unified-box">
+                  <div className="track-desc-label">
+                    <Sparkles size={13} />
+                    <span>Description</span>
+                  </div>
+                  <p className="track-overview-desc">{selectedTrack.description}</p>
+                  {selectedTrack.focusAreas && (
+                    <div className="track-focus-row">
+                      <span className="track-focus-bullet">✦ Focus areas:</span>
+                      <span className="track-focus-text">{selectedTrack.focusAreas}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Central Announcement Banner */}
+                <div className="ps-notice-banner">
+                  <div className="ps-notice-top">
+                    <div className="ps-notice-icon-wrap">
+                      {problemStatementsReleased ? <Sparkles size={15} /> : <Lock size={15} />}
+                    </div>
+                    <span className="ps-notice-tag">
+                      {problemStatementsReleased ? 'OFFICIAL CHALLENGE REVEALED' : 'HACKATHON CHALLENGE ANNOUNCEMENT'}
+                    </span>
+                  </div>
+                  <h4 className="ps-notice-title">
+                    {problemStatementsReleased
+                      ? 'Problem statements are now revealed!'
+                      : 'Problem statements will be revealed at the hackathon'}
+                  </h4>
+                  <p className="ps-notice-desc">
+                    {problemStatementsReleased
+                      ? 'Official challenge problem statements and technical specifications for this track are live. Browse the statements below and open the PDF documents in a new tab.'
+                      : 'All official challenge problem statements and technical specifications for this track will be revealed right here in this pop-up window during the hackathon. Stay tuned—once announced by the organizers, the statement links and PDF documents will appear directly below.'}
+                  </p>
+                </div>
+
+                {/* Problem Statements Section (text 'Software Projects' removed) */}
+                <div className="track-ps-section">
+                  {(() => {
+                    const trackStatements = problemStatements.filter((ps) => ps.trackId === selectedTrack.id)
+                    if (problemStatementsReleased && trackStatements.length > 0) {
+                      return (
+                        <div className="ps-table-wrapper">
+                          <table className="ps-table">
+                            <thead>
+                              <tr>
+                                <th className="ps-th-id">ID</th>
+                                <th className="ps-th-title">Problem Title</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {trackStatements.map((ps) => (
+                                <tr key={ps.id}>
+                                  <td className="ps-td-id">{ps.statementCode}</td>
+                                  <td className="ps-td-title">
+                                    <a
+                                      href={ps.pdfUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="ps-link"
+                                      title={`Open ${ps.title} PDF in a new tab`}
+                                    >
+                                      <span>{ps.title}</span>
+                                      <ExternalLink size={14} className="ps-external-icon" />
+                                    </a>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <div className="ps-empty-card">
+                        <Clock size={20} />
+                        <div className="ps-empty-text">
+                          <strong>Problem statements will be revealed at the hackathon</strong>
+                          <span>Statements for {selectedTrack.title} will appear in this pop-up once unlocked by the organizers.</span>
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+              </div>
+
+              <div className="track-modal-footer">
+                <button
+                  type="button"
+                  className="btn-secondary-luxury"
+                  onClick={() => setSelectedTrack(null)}
+                >
+                  Close
+                </button>
+                {registrationOpen ? (
+                  <a href="/register" className="btn-primary-luxury">
+                    <span>Register for this Track</span>
+                    <ArrowRight size={14} />
+                  </a>
+                ) : (
+                  <span className="btn-primary-luxury is-closed" aria-disabled="true">
+                    <span>Registrations Closed</span>
+                    <Lock size={14} />
+                  </span>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
     </MotionConfig>
   )

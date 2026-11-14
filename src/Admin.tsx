@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { AlertCircle, ArrowRight, ChevronDown, Download, ExternalLink, Eye, EyeOff, ImageIcon, LogOut, Mail, Pencil, Plus, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
+import { AlertCircle, ArrowRight, ChevronDown, Download, ExternalLink, Eye, EyeOff, ImageIcon, Lock, LogOut, Mail, Pencil, Plus, ShieldCheck, Sparkles, Trash2, Unlock, X } from 'lucide-react'
 import QRCode from 'qrcode'
+import { tracks } from './config/event'
 import { payment as payee, upiLink } from './config/payment'
 import { processScreenshotFile } from './image'
 import './admin.css'
@@ -56,9 +57,23 @@ type AdminRegistration = {
   emailLastAttemptAt?: number | null
   emailLastError?: string | null
 }
+type AdminProblemStatement = {
+  id: string
+  trackId: string
+  statementCode: string
+  title: string
+  category: string
+  description: string
+  pdfUrl: string
+  pdfFilename?: string
+  isActive: boolean
+  displayOrder: number
+  createdAt: number
+  updatedAt: number
+}
 type Payment = { paymentMethod: PaymentMethod; utrNumber?: string; screenshotDataUrl?: string }
 type Rules = { minTeamSize: number | null; maxTeamSize: number | null; feePerPerson: number; submissionEnabled: boolean }
-type Tab = 'registrations' | 'spot' | 'counts'
+type Tab = 'registrations' | 'spot' | 'counts' | 'problem-statements'
 
 const statusLabels: Record<ReviewStatus, string> = { pending: 'Pending', valid: 'Valid', invalid: 'Invalid' }
 const methodLabels: Record<PaymentMethod, string> = { upi: 'UPI', cash: 'Cash' }
@@ -484,38 +499,251 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
   const [testEmailOpen, setTestEmailOpen] = useState(false)
   const [testEmailAddr, setTestEmailAddr] = useState('')
   const [sendingTestEmail, setSendingTestEmail] = useState(false)
+  const [problemStatements, setProblemStatements] = useState<AdminProblemStatement[]>([])
+  const [problemStatementsReleased, setProblemStatementsReleased] = useState(false)
+  const [closeRegModalOpen, setCloseRegModalOpen] = useState(false)
+  const [adminPasswordInput, setAdminPasswordInput] = useState('')
+  const [closeRegSubmitting, setCloseRegSubmitting] = useState(false)
+  const [closeRegError, setCloseRegError] = useState('')
+  const [psTrackFilter, setPsTrackFilter] = useState('all')
+  const [psDialogOpen, setPsDialogOpen] = useState(false)
+  const [editingPs, setEditingPs] = useState<AdminProblemStatement | null>(null)
+  const [psFormTrack, setPsFormTrack] = useState(tracks[0]?.id || '')
+  const [psFormCode, setPsFormCode] = useState('')
+  const [psFormTitle, setPsFormTitle] = useState('')
+  const [psFormCategory, setPsFormCategory] = useState('Software Projects')
+  const [psFormDesc, setPsFormDesc] = useState('')
+  const [psFormPdfMode, setPsFormPdfMode] = useState<'url' | 'file'>('url')
+  const [psFormPdfUrl, setPsFormPdfUrl] = useState('')
+  const [psFormFile, setPsFormFile] = useState<{ name: string; mime: string; base64: string } | null>(null)
+  const [psFormActive, setPsFormActive] = useState(true)
+  const [psFormOrder, setPsFormOrder] = useState('0')
+  const [psSaving, setPsSaving] = useState(false)
+  const [psError, setPsError] = useState('')
   const editHeading = useRef<HTMLHeadingElement>(null)
   const proofDialog = useRef<HTMLDialogElement>(null)
   const testEmailDialog = useRef<HTMLDialogElement>(null)
+  const psDialog = useRef<HTMLDialogElement>(null)
+  const closeRegDialog = useRef<HTMLDialogElement>(null)
   const fee = rules?.feePerPerson ?? 649
   // Same team sizes as the website form, unless the server sets its own limits.
   const minPeople = rules?.minTeamSize ?? 2
   const maxPeople = rules?.maxTeamSize ?? 4
+  const registrationOpen = Boolean(rules?.submissionEnabled)
+
+  const fetchRegistrations = useCallback((silent = false) => {
+    if (!silent) setLoading(true)
+    return api<{ registrations: AdminRegistration[]; draftsInProgress: number; rules: Rules }>('registrations')
+      .then((result) => {
+        setRegistrations(result.registrations)
+        setDraftsInProgress(result.draftsInProgress)
+        setRules(result.rules)
+      })
+      .catch((loadError: unknown) => {
+        if (loadError instanceof ApiError && loadError.status === 401) onUnauthorized()
+        else if (!silent) setError(errorText(loadError, 'Could not load registrations.'))
+      })
+      .finally(() => {
+        if (!silent) setLoading(false)
+      })
+  }, [onUnauthorized])
+
+  const fetchProblemStatements = () => {
+    return api<{ problemStatements: AdminProblemStatement[]; problemStatementsReleased?: boolean }>('problem-statements')
+      .then((res) => {
+        if (res?.problemStatements) setProblemStatements(res.problemStatements)
+        if (res?.problemStatementsReleased !== undefined) setProblemStatementsReleased(res.problemStatementsReleased)
+      })
+      .catch(() => {})
+  }
+
+  useEffect(() => {
+    if (psDialogOpen) {
+      psDialog.current?.showModal()
+    } else {
+      psDialog.current?.close()
+    }
+  }, [psDialogOpen])
+
+  useEffect(() => {
+    if (closeRegModalOpen) {
+      closeRegDialog.current?.showModal()
+    } else {
+      closeRegDialog.current?.close()
+    }
+  }, [closeRegModalOpen])
+
+  const handleToggleReleasePs = async () => {
+    const nextState = !problemStatementsReleased
+    try {
+      await api('toggle-ps-release', 'POST', { released: nextState })
+      setProblemStatementsReleased(nextState)
+      setToast(nextState ? 'Problem statements are now released to the public.' : 'Problem statements hidden from the public.')
+      await fetchProblemStatements()
+    } catch (err: unknown) {
+      setError(errorText(err, 'Could not toggle problem statement release status.'))
+    }
+  }
+
+  const handleConfirmToggleRegistration = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!adminPasswordInput.trim()) {
+      setCloseRegError('Admin password is required.')
+      return
+    }
+    setCloseRegSubmitting(true)
+    setCloseRegError('')
+    try {
+      const nextState = !registrationOpen
+      await api('toggle-registration', 'POST', {
+        password: adminPasswordInput,
+        enabled: nextState,
+      })
+      setCloseRegModalOpen(false)
+      setAdminPasswordInput('')
+      setToast(nextState ? 'Registrations are now open website-wide.' : 'Registrations are now closed website-wide.')
+      await fetchRegistrations(true)
+    } catch (err: unknown) {
+      setCloseRegError(errorText(err, 'Failed to update registration status. Check your password.'))
+    } finally {
+      setCloseRegSubmitting(false)
+    }
+  }
+
+  const openAddPs = () => {
+    setEditingPs(null)
+    setPsFormTrack(psTrackFilter !== 'all' ? psTrackFilter : tracks[0]?.id || '')
+    setPsFormCode(`PNG${problemStatements.length + 1}`)
+    setPsFormTitle('')
+    setPsFormCategory('Software Projects')
+    setPsFormDesc('')
+    setPsFormPdfMode('url')
+    setPsFormPdfUrl('')
+    setPsFormFile(null)
+    setPsFormActive(true)
+    setPsFormOrder(String(problemStatements.length + 1))
+    setPsError('')
+    setPsDialogOpen(true)
+  }
+
+  const openEditPs = (ps: AdminProblemStatement) => {
+    setEditingPs(ps)
+    setPsFormTrack(ps.trackId)
+    setPsFormCode(ps.statementCode)
+    setPsFormTitle(ps.title)
+    setPsFormCategory(ps.category || 'Software Projects')
+    setPsFormDesc(ps.description || '')
+    setPsFormPdfMode('url')
+    setPsFormPdfUrl(ps.pdfUrl || '')
+    setPsFormFile(null)
+    setPsFormActive(ps.isActive)
+    setPsFormOrder(String(ps.displayOrder || 0))
+    setPsError('')
+    setPsDialogOpen(true)
+  }
+
+  const handlePdfFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.type !== 'application/pdf' && !file.name.endsWith('.pdf')) {
+      setPsError('Please select a valid PDF file.')
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setPsError('PDF file must be under 10MB.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      setPsFormFile({
+        name: file.name,
+        mime: file.type || 'application/pdf',
+        base64: reader.result as string,
+      })
+      setPsError('')
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleSavePs = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!psFormTrack || !psFormCode.trim() || !psFormTitle.trim()) {
+      setPsError('Please provide Track, Statement Code, and Title.')
+      return
+    }
+    if (psFormPdfMode === 'url' && !psFormPdfUrl.trim() && !editingPs?.pdfUrl) {
+      setPsError('Please provide a PDF link (e.g. Cloudinary, Google Drive, etc.)')
+      return
+    }
+    setPsSaving(true)
+    setPsError('')
+    try {
+      const payload: Record<string, unknown> = {
+        trackId: psFormTrack,
+        statementCode: psFormCode.trim(),
+        title: psFormTitle.trim(),
+        category: psFormCategory.trim() || 'Software Projects',
+        description: psFormDesc.trim(),
+        isActive: psFormActive,
+        displayOrder: parseInt(psFormOrder, 10) || 0,
+      }
+      if (psFormPdfMode === 'file' && psFormFile) {
+        payload.pdfFile = psFormFile
+      } else {
+        payload.pdfUrl = psFormPdfUrl.trim()
+      }
+
+      if (editingPs) {
+        await api(`problem-statements/${editingPs.id}`, 'PUT', payload)
+        setToast(`Problem statement "${psFormTitle}" updated.`)
+      } else {
+        await api('problem-statements', 'POST', payload)
+        setToast(`Problem statement "${psFormTitle}" created.`)
+      }
+      setPsDialogOpen(false)
+      await fetchProblemStatements()
+    } catch (err: unknown) {
+      setPsError(errorText(err, 'Failed to save problem statement.'))
+    } finally {
+      setPsSaving(false)
+    }
+  }
+
+  const handleDeletePs = async (ps: AdminProblemStatement) => {
+    if (!window.confirm(`Are you sure you want to delete "${ps.statementCode}: ${ps.title}"?`)) return
+    try {
+      await api(`problem-statements/${ps.id}`, 'DELETE')
+      setToast(`Problem statement "${ps.title}" deleted.`)
+      await fetchProblemStatements()
+    } catch (err: unknown) {
+      setError(errorText(err, 'Failed to delete problem statement.'))
+    }
+  }
+
+  const handleTogglePsActive = async (ps: AdminProblemStatement) => {
+    try {
+      await api(`problem-statements/${ps.id}`, 'PUT', {
+        ...ps,
+        isActive: !ps.isActive,
+      })
+      setToast(`"${ps.title}" is now ${!ps.isActive ? 'revealed to participants' : 'hidden'}.`)
+      await fetchProblemStatements()
+    } catch (err: unknown) {
+      setError(errorText(err, 'Failed to toggle status.'))
+    }
+  }
+
+  const filteredProblemStatements = useMemo(() => {
+    if (psTrackFilter === 'all') return problemStatements
+    return problemStatements.filter((ps) => ps.trackId === psTrackFilter)
+  }, [problemStatements, psTrackFilter])
 
   useEffect(() => {
     let active = true
 
-    const fetchRegistrations = (silent = false) => {
-      if (!silent) setLoading(true)
-      return api<{ registrations: AdminRegistration[]; draftsInProgress: number; rules: Rules }>('registrations')
-        .then((result) => {
-          if (!active) return
-          setRegistrations(result.registrations)
-          setDraftsInProgress(result.draftsInProgress)
-          setRules(result.rules)
-        })
-        .catch((loadError: unknown) => {
-          if (!active) return
-          if (loadError instanceof ApiError && loadError.status === 401) onUnauthorized()
-          else if (!silent) setError(errorText(loadError, 'Could not load registrations.'))
-        })
-        .finally(() => {
-          if (active && !silent) setLoading(false)
-        })
-    }
-
     // Initial load
     fetchRegistrations()
+    fetchProblemStatements()
 
     // 1. Real-time Server-Sent Events (instant push notifications from VPS/backend)
     let sse: EventSource | null = null
@@ -535,6 +763,15 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
       })
       sse.addEventListener('email_update', () => {
         if (active) fetchRegistrations(true)
+      })
+      sse.addEventListener('problem_statements_updated', () => {
+        if (active) fetchProblemStatements()
+      })
+      sse.addEventListener('system_settings_updated', () => {
+        if (active) {
+          fetchRegistrations(true)
+          fetchProblemStatements()
+        }
       })
     } catch {
       // EventSource unsupported in browser/environment
@@ -574,7 +811,7 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
       clearInterval(interval)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [onUnauthorized])
+  }, [fetchRegistrations])
 
   const editingReceipt = editing?.receipt
   useEffect(() => {
@@ -755,6 +992,7 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
     { id: 'registrations', label: `Registrations (${registrations.length})` },
     { id: 'spot', label: 'Spot Registration' },
     { id: 'counts', label: `Counts & Collections (${valid.length})` },
+    { id: 'problem-statements', label: `Problem Statements (${problemStatements.length})` },
   ]
 
   const statusActions = (registration: AdminRegistration) => (
@@ -884,6 +1122,165 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
             <div><span>Spot teams</span><b>{valid.filter((registration) => registration.source === 'spot').length}</b></div>
           </div>
         </section>
+      ) : tab === 'problem-statements' ? (
+        <section aria-label="Problem statements manager">
+          <div className="ps-admin-header-row">
+            <div>
+              <h2 className="admin-section-title">Problem Statements Manager</h2>
+              <p className="admin-section-note">
+                Create and manage challenge problem statements for the 5 official tracks. Statements marked as active reflect directly in the participant pop-up on the main website.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className={problemStatementsReleased ? 'btn-secondary-luxury is-released' : 'btn-primary-luxury'}
+                onClick={handleToggleReleasePs}
+                title={problemStatementsReleased ? 'Click to withdraw/hide problem statements from public frontend' : 'Release problem statements to frontend'}
+              >
+                <Sparkles size={14} />
+                <span>{problemStatementsReleased ? 'Problem Statements Released (Click to Hide)' : 'Release Problem Statements'}</span>
+              </button>
+              <button
+                type="button"
+                className="btn-primary-luxury"
+                onClick={openAddPs}
+              >
+                <Plus size={16} /> Add Problem Statement
+              </button>
+            </div>
+          </div>
+
+          <div className="ps-admin-filter-bar">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '13px', color: 'var(--ink-soft)' }}>Filter by Track:</span>
+              <select
+                className="form-input"
+                value={psTrackFilter}
+                onChange={(e) => setPsTrackFilter(e.target.value)}
+                style={{ minWidth: '240px' }}
+              >
+                <option value="all">All Tracks ({problemStatements.length})</option>
+                {tracks.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    Track {t.number}: {t.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <span style={{ fontSize: '13px', color: 'var(--ink-soft)' }}>
+              Showing {filteredProblemStatements.length} of {problemStatements.length} statements
+            </span>
+          </div>
+
+          <div className="admin-panel" style={{ padding: 0, overflowX: 'auto' }}>
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Code / ID</th>
+                  <th>Problem Title</th>
+                  <th>Track</th>
+                  <th>Category</th>
+                  <th>PDF Specification</th>
+                  <th>Status</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredProblemStatements.map((ps) => {
+                  const trackObj = tracks.find((t) => t.id === ps.trackId)
+                  return (
+                    <tr key={ps.id}>
+                      <td data-label="Code">
+                        <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--gold)' }}>
+                          {ps.statementCode}
+                        </strong>
+                      </td>
+                      <td data-label="Title">
+                        <div style={{ fontWeight: 500 }}>{ps.title}</div>
+                        {ps.description && (
+                          <small style={{ color: 'var(--ink-soft)', display: 'block', maxWidth: '340px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {ps.description}
+                          </small>
+                        )}
+                      </td>
+                      <td data-label="Track">
+                        <span className="ps-track-tag">
+                          {trackObj ? `Track ${trackObj.number}: ${trackObj.title}` : ps.trackId}
+                        </span>
+                      </td>
+                      <td data-label="Category">
+                        <span style={{ fontSize: '13px', color: 'var(--ink-soft)' }}>{ps.category || 'Software Projects'}</span>
+                      </td>
+                      <td data-label="PDF">
+                        {ps.pdfUrl ? (
+                          <a
+                            href={ps.pdfUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="admin-text-button"
+                            style={{ minHeight: 'auto', padding: '2px 0' }}
+                            title="Open PDF in new tab"
+                          >
+                            <span>Open PDF</span>
+                            <ExternalLink size={13} />
+                          </a>
+                        ) : (
+                          <span style={{ color: 'var(--ink-faint)', fontSize: '12px' }}>No link</span>
+                        )}
+                      </td>
+                      <td data-label="Status">
+                        <span className={`admin-status ${ps.isActive ? 'is-valid' : 'is-pending'}`}>
+                          {ps.isActive ? 'Active (Revealed)' : 'Hidden (Draft)'}
+                        </span>
+                      </td>
+                      <td data-label="Actions" className="admin-actions">
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                          <button
+                            type="button"
+                            className="btn-secondary-luxury"
+                            style={{ minHeight: '32px', padding: '4px 10px', fontSize: '12px' }}
+                            onClick={() => handleTogglePsActive(ps)}
+                            title={ps.isActive ? 'Hide from participants' : 'Reveal to participants'}
+                          >
+                            {ps.isActive ? <EyeOff size={13} /> : <Eye size={13} />}
+                            {ps.isActive ? 'Hide' : 'Reveal'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary-luxury"
+                            style={{ minHeight: '32px', padding: '4px 10px', fontSize: '12px' }}
+                            onClick={() => openEditPs(ps)}
+                            title="Edit statement"
+                          >
+                            <Pencil size={13} /> Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary-luxury"
+                            style={{ minHeight: '32px', padding: '4px 8px', fontSize: '12px', color: 'var(--danger)' }}
+                            onClick={() => handleDeletePs(ps)}
+                            title="Delete statement"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+                {filteredProblemStatements.length === 0 && (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: 'center', padding: '36px 16px', color: 'var(--ink-soft)' }}>
+                      No problem statements found. Click "Add Problem Statement" to create one.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       ) : (
         <section aria-label="Registrations">
           <div className="admin-toolbar">
@@ -945,9 +1342,23 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
             <p role="status">
               {term ? `${visible.length} match${visible.length === 1 ? '' : 'es'} across all registrations (filters ignored while searching)` : `Showing ${visible.length} of ${registrations.length} registrations`} · {rupees(sumOf(visible))}
             </p>
-            <button type="button" className="btn-secondary-luxury" disabled={!visible.length} onClick={() => downloadCsv(visible)} title="Downloads the registrations shown below, one row per person, with payment details on each leader's row">
-              <Download size={14} /> Export CSV
-            </button>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className={registrationOpen ? "btn-danger-gradient" : "btn-secondary-luxury"}
+                onClick={() => {
+                  setAdminPasswordInput('')
+                  setCloseRegError('')
+                  setCloseRegModalOpen(true)
+                }}
+                title={registrationOpen ? "Close website registrations" : "Re-open website registrations"}
+              >
+                {registrationOpen ? <Lock size={14} /> : <Unlock size={14} />} {registrationOpen ? "Close Registrations" : "Open Registrations"}
+              </button>
+              <button type="button" className="btn-secondary-luxury" disabled={!visible.length} onClick={() => downloadCsv(visible)} title="Downloads the registrations shown below, one row per person, with payment details on each leader's row">
+                <Download size={14} /> Export CSV
+              </button>
+            </div>
           </div>
 
           <div className="admin-table-wrap">
@@ -1105,6 +1516,242 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
             </div>
           </>
         )}
+      </dialog>
+
+      <dialog ref={psDialog} className="ps-admin-dialog" onClose={() => setPsDialogOpen(false)}>
+        <header className="ps-dialog-header">
+          <h3>{editingPs ? `Edit Problem Statement: ${editingPs.statementCode}` : 'Add New Problem Statement'}</h3>
+          <button
+            type="button"
+            className="admin-proof-close"
+            onClick={() => setPsDialogOpen(false)}
+            aria-label="Close dialog"
+          >
+            <X size={18} />
+          </button>
+        </header>
+
+        <form onSubmit={handleSavePs} className="ps-dialog-form">
+          {psError && <p className="admin-error" role="alert">{psError}</p>}
+
+          <div className="form-group">
+            <label htmlFor="ps-track-select">Hackathon Track *</label>
+            <select
+              id="ps-track-select"
+              className="form-input"
+              value={psFormTrack}
+              onChange={(e) => setPsFormTrack(e.target.value)}
+              required
+            >
+              {tracks.map((t) => (
+                <option key={t.id} value={t.id}>
+                  Track {t.number}: {t.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '16px' }}>
+            <div className="form-group">
+              <label htmlFor="ps-code-input">Statement Code / ID *</label>
+              <input
+                id="ps-code-input"
+                className="form-input"
+                type="text"
+                placeholder="e.g. PNG1, GAI-01"
+                value={psFormCode}
+                onChange={(e) => setPsFormCode(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="ps-cat-input">Category / Section</label>
+              <input
+                id="ps-cat-input"
+                className="form-input"
+                type="text"
+                placeholder="Software Projects"
+                value={psFormCategory}
+                onChange={(e) => setPsFormCategory(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="ps-title-input">Problem Title *</label>
+            <input
+              id="ps-title-input"
+              className="form-input"
+              type="text"
+              placeholder="e.g. Adversarial Contract Intelligence"
+              value={psFormTitle}
+              onChange={(e) => setPsFormTitle(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="ps-desc-input">Brief Description (Optional)</label>
+            <textarea
+              id="ps-desc-input"
+              className="form-input"
+              rows={3}
+              placeholder="Short overview of the challenge..."
+              value={psFormDesc}
+              onChange={(e) => setPsFormDesc(e.target.value)}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>PDF Specification Source *</label>
+            <div className="ps-mode-toggle">
+              <label>
+                <input
+                  type="radio"
+                  name="ps-pdf-mode"
+                  checked={psFormPdfMode === 'url'}
+                  onChange={() => setPsFormPdfMode('url')}
+                />
+                External PDF Link (Cloudinary / Drive)
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="ps-pdf-mode"
+                  checked={psFormPdfMode === 'file'}
+                  onChange={() => setPsFormPdfMode('file')}
+                />
+                Upload PDF File (.pdf)
+              </label>
+            </div>
+
+            {psFormPdfMode === 'url' ? (
+              <div style={{ marginTop: '10px' }}>
+                <input
+                  className="form-input"
+                  type="url"
+                  placeholder="https://res.cloudinary.com/.../PNG1.pdf"
+                  value={psFormPdfUrl}
+                  onChange={(e) => setPsFormPdfUrl(e.target.value)}
+                />
+                <small style={{ color: 'var(--ink-soft)', marginTop: '4px', display: 'block' }}>
+                  Paste a direct link to the problem statement PDF. When participants click, it opens in a new tab.
+                </small>
+              </div>
+            ) : (
+              <div style={{ marginTop: '10px' }}>
+                <input
+                  className="form-input"
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  onChange={handlePdfFileChange}
+                />
+                {psFormFile && (
+                  <div className="ps-file-badge">
+                    <Sparkles size={12} /> {psFormFile.name} (ready to upload)
+                  </div>
+                )}
+                {editingPs && !psFormFile && editingPs.pdfFilename && (
+                  <div className="ps-file-badge">
+                    Current file: {editingPs.pdfFilename}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'center' }}>
+            <div className="form-group">
+              <label htmlFor="ps-order-input">Display Order</label>
+              <input
+                id="ps-order-input"
+                className="form-input"
+                type="number"
+                value={psFormOrder}
+                onChange={(e) => setPsFormOrder(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group" style={{ paddingTop: '20px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={psFormActive}
+                  onChange={(e) => setPsFormActive(e.target.checked)}
+                />
+                <span>Active (Revealed in frontend pop-up)</span>
+              </label>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+            <button
+              type="button"
+              className="btn-secondary-luxury"
+              onClick={() => setPsDialogOpen(false)}
+              disabled={psSaving}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn-primary-luxury"
+              disabled={psSaving}
+            >
+              <span>{psSaving ? 'Saving...' : editingPs ? 'Update Statement' : 'Add Statement'}</span>
+              <ArrowRight size={14} />
+            </button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog ref={closeRegDialog} className="admin-proof" style={{ maxWidth: '480px' }} onClose={() => setCloseRegModalOpen(false)}>
+        <header>
+          <div>
+            <span className="admin-stat-label">Security Check // Admin Confirmation</span>
+            <h2 style={{ fontSize: '22px', margin: '4px 0 0' }}>
+              {registrationOpen ? 'Close Website Registrations?' : 'Re-open Website Registrations?'}
+            </h2>
+          </div>
+          <button type="button" className="admin-proof-close" onClick={() => setCloseRegModalOpen(false)} aria-label="Close dialog">
+            <X size={18} />
+          </button>
+        </header>
+        <form onSubmit={handleConfirmToggleRegistration} style={{ padding: '24px' }}>
+          <p className="admin-section-note" style={{ margin: '0 0 16px', lineHeight: '1.55' }}>
+            {registrationOpen
+              ? 'This will immediately close registrations website-wide. All Register buttons across the site will be disabled and display "Registrations Closed".'
+              : 'This will re-open registrations website-wide for new participants.'}
+          </p>
+          {closeRegError && <p className="admin-error" role="alert">{closeRegError}</p>}
+          <div className="form-group" style={{ marginBottom: '20px' }}>
+            <label htmlFor="admin-close-password">Admin Password Confirmation *</label>
+            <input
+              id="admin-close-password"
+              className="form-input"
+              type="password"
+              required
+              autoFocus
+              placeholder="Enter your admin password"
+              value={adminPasswordInput}
+              onChange={(e) => setAdminPasswordInput(e.target.value)}
+            />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+            <button type="button" className="btn-secondary-luxury" onClick={() => setCloseRegModalOpen(false)} disabled={closeRegSubmitting}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className={registrationOpen ? "btn-danger-gradient" : "btn-primary-luxury"}
+              disabled={closeRegSubmitting || !adminPasswordInput.trim()}
+            >
+              <span>{closeRegSubmitting ? 'Confirming...' : registrationOpen ? 'Confirm & Close Registrations' : 'Confirm & Open Registrations'}</span>
+              <ArrowRight size={14} />
+            </button>
+          </div>
+        </form>
       </dialog>
     </main>
   )

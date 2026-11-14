@@ -852,3 +852,118 @@ test('admin test-email requires valid session and email, sending sample confirma
   assert.equal(goodRes.body.ok, true)
   assert.equal(goodRes.body.dryRun, true)
 })
+
+test('problem statements public and admin APIs support listing, creation, update, and deletion', async (t) => {
+  const f = await adminFixture(t)
+
+  // 1. Public listing initially has statements hidden until released
+  const initialPublic = await f.call('GET', '/api/problem-statements')
+  assert.equal(initialPublic.status, 200)
+  assert.ok(Array.isArray(initialPublic.body.problemStatements))
+  assert.equal(initialPublic.body.problemStatementsReleased, false)
+  assert.equal(initialPublic.body.problemStatements.length, 0)
+
+  // 2. Unauthenticated admin endpoint denies with 401
+  const unauthRes = await f.call('GET', '/api/admin/problem-statements')
+  assert.equal(unauthRes.status, 401)
+
+  // 3. Authenticated admin CRUD & can see all seeded problem statements
+  const cookie = await f.login()
+  const adminList = await f.call('GET', '/api/admin/problem-statements', undefined, cookie)
+  assert.equal(adminList.status, 200)
+  assert.ok(adminList.body.problemStatements.length >= 10)
+  const first = adminList.body.problemStatements[0]
+  assert.equal(first.statementCode, 'PNG1')
+  assert.equal(first.title, 'Adversarial Contract Intelligence')
+  assert.ok(first.pdfUrl.includes('res.cloudinary.com'))
+
+  // Release problem statements and verify public endpoint reveals them
+  await f.call('POST', '/api/admin/toggle-ps-release', { released: true }, cookie)
+  const releasedPublic = await f.call('GET', '/api/problem-statements')
+  assert.equal(releasedPublic.body.problemStatementsReleased, true)
+  assert.ok(releasedPublic.body.problemStatements.length >= 10)
+
+  // Create new problem statement
+  const createRes = await f.call('POST', '/api/admin/problem-statements', {
+    trackId: 'cybersecurity-digital-forensics',
+    statementCode: 'CYB-01',
+    title: 'Zero-Knowledge Log Auditing',
+    category: 'Software Projects',
+    pdfUrl: 'https://example.com/ps/CYB-01.pdf',
+    isActive: true,
+    displayOrder: 1,
+  }, cookie)
+  assert.equal(createRes.status, 201)
+  assert.equal(createRes.body.ok, true)
+  const createdId = createRes.body.problemStatement.id
+
+  // Verify created in public list
+  const updatedPublic = await f.call('GET', '/api/problem-statements')
+  const found = updatedPublic.body.problemStatements.find((ps) => ps.id === createdId)
+  assert.ok(found)
+  assert.equal(found.statementCode, 'CYB-01')
+  assert.equal(found.title, 'Zero-Knowledge Log Auditing')
+
+  // Update
+  const updateRes = await f.call('PUT', `/api/admin/problem-statements/${createdId}`, {
+    trackId: 'cybersecurity-digital-forensics',
+    statementCode: 'CYB-01',
+    title: 'Zero-Knowledge Log Auditing v2',
+    category: 'Software Projects',
+    pdfUrl: 'https://example.com/ps/CYB-01-v2.pdf',
+    isActive: true,
+    displayOrder: 1,
+  }, cookie)
+  assert.equal(updateRes.status, 200)
+
+  // Delete
+  const deleteRes = await f.call('DELETE', `/api/admin/problem-statements/${createdId}`, undefined, cookie)
+  assert.equal(deleteRes.status, 200)
+
+  // Verify deleted
+  const postDeletePublic = await f.call('GET', '/api/problem-statements')
+  assert.ok(!postDeletePublic.body.problemStatements.some((ps) => ps.id === createdId))
+})
+
+test('admin can toggle registration status with password confirmation and release problem statements', async (t) => {
+  const f = await adminFixture(t)
+  const cookie = await f.login()
+
+  // 1. Unauthenticated attempts are blocked
+  assert.equal((await f.call('POST', '/api/admin/toggle-registration', { enabled: false, password: testAdminPassword })).status, 401)
+  assert.equal((await f.call('POST', '/api/admin/toggle-ps-release', { released: true })).status, 401)
+
+  // 2. Missing password returns 400
+  const noPw = await f.call('POST', '/api/admin/toggle-registration', { enabled: false }, cookie)
+  assert.equal(noPw.status, 400)
+
+  // 3. Wrong password returns 403
+  const wrongPw = await f.call('POST', '/api/admin/toggle-registration', { enabled: false, password: 'wrong-password' }, cookie)
+  assert.equal(wrongPw.status, 403)
+
+  // 4. Correct password closes registration
+  const closeRes = await f.call('POST', '/api/admin/toggle-registration', { enabled: false, password: testAdminPassword }, cookie)
+  assert.equal(closeRes.status, 200)
+  assert.equal(closeRes.body.registrationOpen, false)
+
+  // Verify public problem-statements endpoint reflects registrationOpen: false
+  const publicCheck1 = await f.call('GET', '/api/problem-statements')
+  assert.equal(publicCheck1.body.registrationOpen, false)
+
+  // 5. Toggle problem statements release
+  const releaseRes = await f.call('POST', '/api/admin/toggle-ps-release', { released: true }, cookie)
+  assert.equal(releaseRes.status, 200)
+  assert.equal(releaseRes.body.problemStatementsReleased, true)
+
+  const publicCheck2 = await f.call('GET', '/api/problem-statements')
+  assert.equal(publicCheck2.body.problemStatementsReleased, true)
+
+  // 6. Re-open registrations
+  const openRes = await f.call('POST', '/api/admin/toggle-registration', { enabled: true, password: testAdminPassword }, cookie)
+  assert.equal(openRes.status, 200)
+  assert.equal(openRes.body.registrationOpen, true)
+
+  const publicCheck3 = await f.call('GET', '/api/problem-statements')
+  assert.equal(publicCheck3.body.registrationOpen, true)
+})
+

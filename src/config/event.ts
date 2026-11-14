@@ -48,27 +48,59 @@ export const keyStats = [
   { value: '1,00,000', unit: 'INR', label: 'Provisional Prize Pool', desc: 'Final award details to be announced' },
   { value: '36', unit: 'HOURS', label: 'Continuous Building', desc: 'A focused, live build window' },
   { value: '700+', unit: 'BUILDERS', label: 'National Participants', desc: 'A national student community' },
-  { value: '10', unit: 'TRACKS', label: 'Challenge Fields', desc: 'Provisional problem domains' },
+  { value: '5', unit: 'TRACKS', label: 'Challenge Fields', desc: 'Core problem domains' },
 ]
 
 export interface Track {
   id: string
   number: string
   title: string
-  status: 'PROVISIONAL TRACK'
+  description: string
+  focusAreas: string
+  status?: string
 }
 
 export const tracks: Track[] = [
-  { id: 'generative-ai-llm', number: '01', title: 'Generative AI & LLM Applications', status: 'PROVISIONAL TRACK' },
-  { id: 'cybersecurity-defense', number: '02', title: 'Cybersecurity & Cyber Defense', status: 'PROVISIONAL TRACK' },
-  { id: 'healthcare-wellness', number: '03', title: 'Healthcare & Digital Wellness', status: 'PROVISIONAL TRACK' },
-  { id: 'fintech-payments', number: '04', title: 'FinTech & Digital Payments', status: 'PROVISIONAL TRACK' },
-  { id: 'smart-cities', number: '05', title: 'Smart Cities & Urban Innovation', status: 'PROVISIONAL TRACK' },
-  { id: 'education-learning', number: '06', title: 'Education & Learning Technology', status: 'PROVISIONAL TRACK' },
-  { id: 'sustainability-climate', number: '07', title: 'Sustainability & Climate Technology', status: 'PROVISIONAL TRACK' },
-  { id: 'agriculture-rural', number: '08', title: 'Agriculture & Rural Innovation', status: 'PROVISIONAL TRACK' },
-  { id: 'developer-tools', number: '09', title: 'Developer Tools & Productivity', status: 'PROVISIONAL TRACK' },
-  { id: 'open-innovation', number: '10', title: 'Open Innovation', status: 'PROVISIONAL TRACK' },
+  {
+    id: 'generative-ai-automation',
+    number: '01',
+    title: 'Generative AI & Automation',
+    description: 'Participants build practical software tools that go beyond basic chat interfaces to automate complex, multi-step workflows.',
+    focusAreas: 'Multi-agent systems, enterprise productivity, automated code review, and localized language assistants.',
+    status: 'ACTIVE DOMAIN',
+  },
+  {
+    id: 'cybersecurity-digital-forensics',
+    number: '02',
+    title: 'Cybersecurity & Digital Forensics',
+    description: 'Participants build proactive defense tools and investigative software that protect sensitive data, detect active threats, and uncover digital footprints.',
+    focusAreas: 'Threat intelligence, phishing detection, automated log analysis, privacy-preserving cryptography, and incident response workflows.',
+    status: 'ACTIVE DOMAIN',
+  },
+  {
+    id: 'fintech-blockchain',
+    number: '03',
+    title: 'FinTech & Blockchain',
+    description: 'Participants build accessible financial applications and decentralized protocols that streamline payments, automate wealth management, and establish trustless digital ecosystems.',
+    focusAreas: 'Smart contract security, decentralized identity, micro-lending platforms, cross-border payment rails, and automated personal finance tools.',
+    status: 'ACTIVE DOMAIN',
+  },
+  {
+    id: 'healthtech-mental-wellbeing',
+    number: '04',
+    title: 'HealthTech & Mental Well-being',
+    description: 'Participants build accessible digital health platforms and supportive software tools that improve patient care, simplify medical workflows, and promote daily mental wellness.',
+    focusAreas: 'Telemedicine interfaces, symptom triage systems, cognitive behavioral therapy tools, accessible UI/UX for users with disabilities, and preventative health tracking.',
+    status: 'ACTIVE DOMAIN',
+  },
+  {
+    id: 'open-innovation',
+    number: '05',
+    title: 'Open Innovation (Open Track)',
+    description: 'Any idea that solves a real problem, in any field. No good idea gets turned away.',
+    focusAreas: 'Developer tools, EdTech platforms, creator economy software, sustainable tech, and experimental web applications.',
+    status: 'OPEN TRACK',
+  },
 ]
 
 export const prizes = [
@@ -183,7 +215,7 @@ export const eventInfoDetails: EventInfoItem[] = [
   },
   {
     title: 'Challenge Tracks',
-    value: '10 Technology Domains',
+    value: '5 Technology Domains',
     detail: 'Specific challenge problem statements will be released during the event.',
     icon: 'terminal',
   },

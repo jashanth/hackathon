@@ -524,6 +524,57 @@ function cleanRegistration(data) {
   return cleaned
 }
 
+export function initProblemStatementsTable(db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS problem_statements (
+      id TEXT PRIMARY KEY,
+      track_id TEXT NOT NULL,
+      statement_code TEXT NOT NULL,
+      title TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'Software Projects',
+      description TEXT,
+      pdf_url TEXT,
+      pdf_filename TEXT,
+      pdf_mime TEXT,
+      pdf_data BLOB,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_problem_statements_track ON problem_statements(track_id, is_active, display_order);
+  `)
+
+  try {
+    const countRow = db.prepare('SELECT COUNT(*) AS count FROM problem_statements').get()
+    if (!countRow || countRow.count === 0) {
+      const now = Date.now()
+      const seedStatements = [
+        { code: 'PNG1', title: 'Adversarial Contract Intelligence', url: 'https://res.cloudinary.com/avz3xnha/image/upload/PNG1.pdf', order: 1 },
+        { code: 'PNG2', title: 'Multi-Agent Incident Commander', url: 'https://res.cloudinary.com/avz3xnha/image/upload/PNG1.pdf', order: 2 },
+        { code: 'PNG3', title: 'LLM Specification Compiler', url: 'https://res.cloudinary.com/avz3xnha/image/upload/PNG1.pdf', order: 3 },
+        { code: 'PNG4', title: 'Self-Healing Knowledge Base', url: 'https://res.cloudinary.com/avz3xnha/image/upload/PNG1.pdf', order: 4 },
+        { code: 'PNG5', title: 'Agent Permission Governor', url: 'https://res.cloudinary.com/avz3xnha/image/upload/PNG1.pdf', order: 5 },
+        { code: 'PNG6', title: 'Agentic Data Cleaning Planner', url: 'https://res.cloudinary.com/avz3xnha/image/upload/PNG1.pdf', order: 6 },
+        { code: 'PNG7', title: 'Autonomous Test Generation for Legacy Systems', url: 'https://res.cloudinary.com/avz3xnha/image/upload/PNG1.pdf', order: 7 },
+        { code: 'PNG8', title: 'Semantic Change Impact Analyzer', url: 'https://res.cloudinary.com/avz3xnha/image/upload/PNG1.pdf', order: 8 },
+        { code: 'PNG9', title: 'Personalized Learning Path Optimizer', url: 'https://res.cloudinary.com/avz3xnha/image/upload/PNG1.pdf', order: 9 },
+        { code: 'PNG10', title: 'LLM Cost-Quality Routing Fabric', url: 'https://res.cloudinary.com/avz3xnha/image/upload/PNG1.pdf', order: 10 },
+      ]
+      const insertStmt = db.prepare(`
+        INSERT INTO problem_statements (id, track_id, statement_code, title, category, description, pdf_url, is_active, display_order, created_at, updated_at)
+        VALUES (?, 'generative-ai-automation', ?, ?, 'Software Projects', 'Official challenge specification for Generative AI & Automation.', ?, 1, ?, ?, ?)
+      `)
+      for (const item of seedStatements) {
+        const id = randomBytes(16).toString('hex')
+        insertStmt.run(id, item.code, item.title, item.url, item.order, now, now)
+      }
+    }
+  } catch (err) {
+    console.error('[problem-statements] Initialization error:', err?.message || err)
+  }
+}
+
 export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJson, mailer: customMailer } = {}) {
   const secure = process.env.NODE_ENV === 'production'
   const rawAdminConfig = adminAccounts ?? adminAccountsJson ?? process.env.ADMIN_ACCOUNTS_JSON
@@ -572,6 +623,11 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       result TEXT NOT NULL,
       user_agent TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS system_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `)
 
   // Migrate older admin_sessions table if missing last_active_at or password_hash
@@ -617,6 +673,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS drafts_utr_number ON drafts(utr_number) WHERE utr_number IS NOT NULL')
 
   initEmailTables(db)
+  initProblemStatementsTable(db)
 
   const apiLimiter = new RateLimiter({ windowMs: 60 * 1000, maxRequests: 300 })
   const loginLimiter = new RateLimiter({ windowMs: 15 * 60 * 1000, maxRequests: 25 })
@@ -654,6 +711,23 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
   triggerEmailQueue()
 
   const rules = rulesFromEnvironment()
+
+  function getSystemSetting(key, fallback) {
+    const row = db.prepare('SELECT value FROM system_settings WHERE key = ?').get(key)
+    return row ? row.value : fallback
+  }
+
+  function setSystemSetting(key, val) {
+    const now = Date.now()
+    db.prepare(`
+      INSERT INTO system_settings (key, value, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+    `).run(key, String(val), now)
+  }
+
+  const isRegistrationOpen = () => getSystemSetting('registration_open', rules.submissionEnabled ? 'true' : 'false') === 'true'
+  const isProblemStatementsReleased = () => getSystemSetting('problem_statements_released', 'false') === 'true'
 
   function sessionFor(req, res) {
     const token = parseCookies(req.headers.cookie)[cookieName]
@@ -960,7 +1034,13 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         const draft = JSON.parse(data)
         return draft.members.length > 0 || ['teamName', 'teamSize', 'college', 'collegeCode', 'leadName', 'email', 'phone'].some((field) => draft[field] && draft[field].trim())
       }).length
-      return json(res, 200, { registrations: allRegistrations().map(publicRegistration), draftsInProgress, rules })
+      return json(res, 200, {
+        registrations: allRegistrations().map(publicRegistration),
+        draftsInProgress,
+        rules: { ...rules, submissionEnabled: isRegistrationOpen() },
+        registrationOpen: isRegistrationOpen(),
+        problemStatementsReleased: isProblemStatementsReleased(),
+      })
     }
 
     // 9. Spot registration
@@ -1109,6 +1189,147 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       }
     }
 
+    // 14. Problem Statements Admin API
+    if (url.pathname === '/api/admin/problem-statements' && req.method === 'GET') {
+      const rows = db.prepare('SELECT id, track_id, statement_code, title, category, description, pdf_url, pdf_filename, is_active, display_order, created_at, updated_at FROM problem_statements ORDER BY display_order ASC, created_at ASC').all()
+      const problemStatements = rows.map((r) => ({
+        id: r.id,
+        trackId: r.track_id,
+        statementCode: r.statement_code,
+        title: r.title,
+        category: r.category || 'Software Projects',
+        description: r.description || '',
+        pdfUrl: r.pdf_url || `/api/problem-statements/${r.id}/pdf`,
+        pdfFilename: r.pdf_filename || '',
+        isActive: Boolean(r.is_active),
+        displayOrder: r.display_order,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      }))
+      return json(res, 200, { problemStatements, problemStatementsReleased: isProblemStatementsReleased() })
+    }
+
+    if (url.pathname === '/api/admin/problem-statements' && req.method === 'POST') {
+      const input = await readJsonBody(req, 10 * 1024 * 1024)
+      if (!input?.trackId || !input?.statementCode || !input?.title) {
+        return error(res, 400, 'Track, Statement Code, and Title are required.')
+      }
+      const now = Date.now()
+      const id = randomBytes(16).toString('hex')
+      const trackId = sanitizeInputText(input.trackId, 64)
+      const statementCode = sanitizeInputText(input.statementCode, 32)
+      const title = sanitizeInputText(input.title, 200)
+      const category = sanitizeInputText(input.category || 'Software Projects', 100)
+      const description = sanitizeInputText(input.description || '', 1000)
+      let pdfUrl = typeof input.pdfUrl === 'string' ? input.pdfUrl.trim() : ''
+      let pdfFilename = null
+      let pdfMime = null
+      let pdfData = null
+
+      if (input.pdfFile && typeof input.pdfFile.base64 === 'string') {
+        pdfFilename = sanitizeInputText(input.pdfFile.name || 'document.pdf', 150)
+        pdfMime = input.pdfFile.mime || 'application/pdf'
+        try {
+          const rawBase64 = input.pdfFile.base64.includes(',') ? input.pdfFile.base64.split(',')[1] : input.pdfFile.base64
+          pdfData = Buffer.from(rawBase64, 'base64')
+          if (!pdfUrl) {
+            pdfUrl = `/api/problem-statements/${id}/pdf`
+          }
+        } catch {
+          return error(res, 400, 'Invalid PDF file upload.')
+        }
+      }
+
+      const isActive = input.isActive === false ? 0 : 1
+      const displayOrder = Number.isInteger(input.displayOrder) ? input.displayOrder : 0
+
+      db.prepare(`
+        INSERT INTO problem_statements (id, track_id, statement_code, title, category, description, pdf_url, pdf_filename, pdf_mime, pdf_data, is_active, display_order, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, trackId, statementCode, title, category, description, pdfUrl, pdfFilename, pdfMime, pdfData, isActive, displayOrder, now, now)
+
+      notifyAdminClients('problem_statements_updated')
+      return json(res, 201, {
+        ok: true,
+        problemStatement: {
+          id, trackId, statementCode, title, category, description, pdfUrl, pdfFilename, isActive: Boolean(isActive), displayOrder, createdAt: now, updatedAt: now,
+        }
+      })
+    }
+
+    const psAdminMatch = /^\/api\/admin\/problem-statements\/([a-zA-Z0-9_-]{1,64})$/.exec(url.pathname)
+    if (psAdminMatch && req.method === 'PUT') {
+      const id = psAdminMatch[1]
+      const existing = db.prepare('SELECT id FROM problem_statements WHERE id = ?').get(id)
+      if (!existing) return error(res, 404, 'problem statement not found')
+
+      const input = await readJsonBody(req, 10 * 1024 * 1024)
+      const now = Date.now()
+      const trackId = sanitizeInputText(input.trackId, 64)
+      const statementCode = sanitizeInputText(input.statementCode, 32)
+      const title = sanitizeInputText(input.title, 200)
+      const category = sanitizeInputText(input.category || 'Software Projects', 100)
+      const description = sanitizeInputText(input.description || '', 1000)
+      let pdfUrl = typeof input.pdfUrl === 'string' ? input.pdfUrl.trim() : ''
+      const isActive = input.isActive === false ? 0 : 1
+      const displayOrder = Number.isInteger(input.displayOrder) ? input.displayOrder : 0
+
+      if (input.pdfFile && typeof input.pdfFile.base64 === 'string') {
+        const pdfFilename = sanitizeInputText(input.pdfFile.name || 'document.pdf', 150)
+        const pdfMime = input.pdfFile.mime || 'application/pdf'
+        const rawBase64 = input.pdfFile.base64.includes(',') ? input.pdfFile.base64.split(',')[1] : input.pdfFile.base64
+        const pdfData = Buffer.from(rawBase64, 'base64')
+        if (!pdfUrl) pdfUrl = `/api/problem-statements/${id}/pdf`
+        db.prepare(`
+          UPDATE problem_statements
+          SET track_id = ?, statement_code = ?, title = ?, category = ?, description = ?, pdf_url = ?, pdf_filename = ?, pdf_mime = ?, pdf_data = ?, is_active = ?, display_order = ?, updated_at = ?
+          WHERE id = ?
+        `).run(trackId, statementCode, title, category, description, pdfUrl, pdfFilename, pdfMime, pdfData, isActive, displayOrder, now, id)
+      } else {
+        db.prepare(`
+          UPDATE problem_statements
+          SET track_id = ?, statement_code = ?, title = ?, category = ?, description = ?, pdf_url = ?, is_active = ?, display_order = ?, updated_at = ?
+          WHERE id = ?
+        `).run(trackId, statementCode, title, category, description, pdfUrl, isActive, displayOrder, now, id)
+      }
+
+      notifyAdminClients('problem_statements_updated')
+      return json(res, 200, { ok: true })
+    }
+
+    if (psAdminMatch && req.method === 'DELETE') {
+      const id = psAdminMatch[1]
+      db.prepare('DELETE FROM problem_statements WHERE id = ?').run(id)
+      notifyAdminClients('problem_statements_updated')
+      return json(res, 200, { ok: true })
+    }
+
+    // 15. Toggle Registration Open / Closed
+    if (url.pathname === '/api/admin/toggle-registration' && req.method === 'POST') {
+      const input = await readJsonBody(req, 4 * 1024)
+      if (typeof input?.password !== 'string' || !input.password) {
+        return error(res, 400, 'Admin password is required to change registration status.')
+      }
+      const matchedAccount = configuredAdminAccounts.find((a) => a.email.toLowerCase() === admin.email.toLowerCase())
+      const storedHash = matchedAccount?.passwordHash || admin.passwordHash
+      if (!storedHash || !verifyPassword(input.password, storedHash)) {
+        return error(res, 403, 'Incorrect admin password. Registration status unchanged.')
+      }
+      const enabled = Boolean(input.enabled)
+      setSystemSetting('registration_open', enabled ? 'true' : 'false')
+      notifyAdminClients('system_settings_updated')
+      return json(res, 200, { ok: true, registrationOpen: enabled })
+    }
+
+    // 16. Toggle Problem Statements Release
+    if (url.pathname === '/api/admin/toggle-ps-release' && req.method === 'POST') {
+      const input = await readJsonBody(req, 4 * 1024)
+      const released = Boolean(input?.released)
+      setSystemSetting('problem_statements_released', released ? 'true' : 'false')
+      notifyAdminClients('problem_statements_updated')
+      return json(res, 200, { ok: true, problemStatementsReleased: released })
+    }
+
     return error(res, 404, 'not found')
   }
 
@@ -1165,8 +1386,52 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         }
 
         if (req.method !== 'GET' && !isSameOrigin(req, secure)) return error(res, 403, 'same-origin request required')
-        if (!['GET', 'PUT', 'POST'].includes(req.method)) return error(res, 405, 'method not allowed')
+        if (!['GET', 'PUT', 'POST', 'DELETE'].includes(req.method)) return error(res, 405, 'method not allowed')
         if (url.pathname.startsWith('/api/admin/')) return await adminApi(req, res, url)
+
+        // Public Problem Statements API
+        if (url.pathname === '/api/problem-statements' && req.method === 'GET') {
+          const released = isProblemStatementsReleased()
+          const rows = released
+            ? db.prepare('SELECT id, track_id, statement_code, title, category, description, pdf_url, pdf_filename, is_active, display_order FROM problem_statements WHERE is_active = 1 ORDER BY display_order ASC, created_at ASC').all()
+            : []
+          const problemStatements = rows.map((r) => ({
+            id: r.id,
+            trackId: r.track_id,
+            statementCode: r.statement_code,
+            title: r.title,
+            category: r.category || '',
+            description: r.description || '',
+            pdfUrl: r.pdf_url || `/api/problem-statements/${r.id}/pdf`,
+            displayOrder: r.display_order,
+          }))
+          return json(res, 200, {
+            problemStatements,
+            registrationOpen: isRegistrationOpen(),
+            problemStatementsReleased: released,
+          })
+        }
+
+        const psPdfMatch = /^\/api\/problem-statements\/([a-zA-Z0-9_-]{1,64})\/pdf$/.exec(url.pathname)
+        if (psPdfMatch && req.method === 'GET') {
+          const row = db.prepare('SELECT pdf_data, pdf_mime, pdf_filename, pdf_url FROM problem_statements WHERE id = ?').get(psPdfMatch[1])
+          if (!row) return error(res, 404, 'problem statement not found')
+          if (row.pdf_data) {
+            res.writeHead(200, {
+              'Content-Type': row.pdf_mime || 'application/pdf',
+              'Content-Disposition': `inline; filename="${row.pdf_filename || 'problem-statement.pdf'}"`,
+              'Cache-Control': 'public, max-age=3600',
+              'X-Content-Type-Options': 'nosniff',
+            })
+            return res.end(Buffer.from(row.pdf_data))
+          }
+          if (row.pdf_url) {
+            res.writeHead(302, { Location: row.pdf_url })
+            return res.end()
+          }
+          return error(res, 404, 'no PDF available for this problem statement')
+        }
+
         if (url.pathname !== '/api/registration' && url.pathname !== '/api/registration/submit') return error(res, 404, 'not found')
 
         if (url.pathname === '/api/registration' && req.method === 'PUT') {
@@ -1186,7 +1451,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         const tokenHash = req.method === 'GET' ? sessionFor(req, res) : existingSession(req)
         if (!tokenHash) return error(res, 401, 'resume cookie required')
         const current = () => db.prepare('SELECT data, step, status, receipt, revision FROM drafts WHERE token_hash = ?').get(tokenHash)
-        if (req.method === 'GET') return json(res, 200, { draft: publicDraft(current()), rules })
+        if (req.method === 'GET') return json(res, 200, { draft: publicDraft(current()), rules: { ...rules, submissionEnabled: isRegistrationOpen() } })
         const input = await readJsonBody(req, url.pathname === '/api/registration/submit' ? maxPaymentBodyBytes : maxBodyBytes)
         if (url.pathname === '/api/registration') {
           if (!input || typeof input !== 'object' || !Number.isInteger(input.step) || input.step < 0 || input.step > 2 || !Number.isInteger(input.revision) || !Object.prototype.hasOwnProperty.call(input, 'data')) return error(res, 400, 'invalid registration update')
@@ -1201,7 +1466,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         if (!input || !Number.isInteger(input.revision)) return error(res, 400, 'invalid submission')
         const row = current()
         if (row.status === 'submitted') return json(res, 200, { draft: publicDraft(row) })
-        if (!rules.submissionEnabled) return error(res, 403, 'submission is not enabled')
+        if (!isRegistrationOpen()) return error(res, 403, 'submission is not enabled')
         if (input.revision !== row.revision) return json(res, 409, { error: 'revision conflict', draft: publicDraft(row) })
         // Checked and stored in cleaned form, so a phone typed with spaces still submits.
         const draftData = JSON.parse(row.data)
