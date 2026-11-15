@@ -118,7 +118,7 @@ const defaultInvitationTemplates: Record<string, InvitationTemplate> = {
     name: 'External College Invitation',
     category: 'External College',
     subject: "Official Invitation: KGRCET's HACKATHON 2027 — 36-Hour National Level Hackathon",
-    message: "On behalf of the Department of Computer Science and Engineering, KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, we cordially invite your esteemed institution to participate in **KGRCET's HACKATHON 2027**, a 36-hour national-level hackathon bringing together student developers, innovators and problem-solvers from across India. We welcome your institution to encourage and nominate talented students and faculty mentors to be part of this exciting initiative.",
+    message: "On behalf of the Department of Computer Science and Engineering, KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, we cordially invite your institution to participate in **KGRCET's HACKATHON 2027** — a 36-hour national-level event bringing together student innovators and developers from across India.\n\nWe encourage your institution to nominate interested students and faculty mentors to be part of this initiative.",
   },
   sponsor: {
     id: 'sponsor',
