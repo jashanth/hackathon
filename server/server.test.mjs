@@ -982,3 +982,144 @@ test('domain is recorded in registration and exported in admin CSV', async (t) =
   assert.match(csvResponse.body, /"Cybersecurity & Digital Forensics"/)
 })
 
+test('admin invitations API: templates, preview, test-send, dispatch, duplicate check, and resend', async (t) => {
+  const f = await adminFixture(t)
+  const cookie = await f.login()
+
+  // 1. Fetch predefined templates
+  const tplRes = await f.call('GET', '/api/admin/invitations/templates', undefined, cookie)
+  assert.equal(tplRes.status, 200)
+  assert.ok(tplRes.body.templates.internal)
+  assert.ok(tplRes.body.templates.external)
+  assert.ok(tplRes.body.templates.sponsor)
+  assert.ok(tplRes.body.templates.custom)
+
+  // 2. Render live preview
+  const prevRes = await f.call('POST', '/api/admin/invitations/preview', {
+    recipientName: 'Dr. Ramesh Kumar',
+    designation: 'Principal',
+    institution: 'VNR VJIET, Hyderabad',
+    category: 'External College',
+    templateKey: 'external',
+  }, cookie)
+  assert.equal(prevRes.status, 200)
+  assert.match(prevRes.body.html, /Dr\. Ramesh Kumar/)
+  assert.match(prevRes.body.html, /Unlike conventional hackathons/)
+  assert.match(prevRes.body.html, /700/)
+  assert.match(prevRes.body.html, /OFFICIAL EVENT INVITATION/)
+  assert.match(prevRes.body.html, /hackathon\.cybersec-kgrcet\.com/)
+
+  // 3. Send test email to admin
+  const testRes = await f.call('POST', '/api/admin/invitations', {
+    isTest: true,
+    recipientName: 'Admin Tester',
+    category: 'Internal College',
+    templateKey: 'internal',
+  }, cookie)
+  assert.equal(testRes.status, 200)
+  assert.equal(testRes.body.isTest, true)
+  assert.equal(testRes.body.sentTo, testAdminEmail)
+
+  // Invitations table should still be empty after test email
+  const emptyList = await f.call('GET', '/api/admin/invitations', undefined, cookie)
+  assert.equal(emptyList.body.invitations.length, 0)
+  assert.equal(emptyList.body.stats.total, 0)
+
+  // 4. Send actual invitation
+  const sendRes = await f.call('POST', '/api/admin/invitations', {
+    recipientName: 'Dr. Ramesh Kumar',
+    email: 'principal@vnrvjiet.ac.in',
+    institution: 'VNR VJIET',
+    designation: 'Principal',
+    category: 'Principal',
+    templateKey: 'official',
+  }, cookie)
+  assert.equal(sendRes.status, 201)
+  assert.equal(sendRes.body.sentCount, 1)
+
+  // Verify list & stats
+  const listRes = await f.call('GET', '/api/admin/invitations', undefined, cookie)
+  assert.equal(listRes.body.invitations.length, 1)
+  assert.equal(listRes.body.stats.total, 1)
+  assert.equal(listRes.body.stats.sent, 1)
+  const invite = listRes.body.invitations[0]
+  assert.equal(invite.recipientName, 'Dr. Ramesh Kumar')
+  assert.equal(invite.email, 'principal@vnrvjiet.ac.in')
+  assert.equal(invite.category, 'Principal')
+  assert.ok(invite.sentBy.includes(testAdminEmail))
+
+  // 5. Duplicate warning
+  const dupRes = await f.call('POST', '/api/admin/invitations', {
+    recipientName: 'Dr. Ramesh Kumar',
+    email: 'principal@vnrvjiet.ac.in',
+    institution: 'VNR VJIET',
+    designation: 'Principal',
+    category: 'Principal',
+    templateKey: 'official',
+  }, cookie)
+  assert.equal(dupRes.status, 409)
+  assert.equal(dupRes.body.warning, 'duplicate')
+
+  // Sending with allowDuplicate succeeds
+  const allowDupRes = await f.call('POST', '/api/admin/invitations', {
+    recipientName: 'Dr. Ramesh Kumar',
+    email: 'principal@vnrvjiet.ac.in',
+    institution: 'VNR VJIET',
+    designation: 'Principal',
+    category: 'Principal',
+    templateKey: 'official',
+    allowDuplicate: true,
+  }, cookie)
+  assert.equal(allowDupRes.status, 201)
+
+  // 6. Multiple recipients confirmation requirement
+  const multiNoConfirm = await f.call('POST', '/api/admin/invitations', {
+    recipientName: 'Esteemed Faculty',
+    email: 'hod1@college.edu, hod2@college.edu',
+    institution: 'Engineering College',
+    designation: 'HOD',
+    category: 'HOD / Faculty',
+    templateKey: 'official',
+  }, cookie)
+  assert.equal(multiNoConfirm.status, 400)
+  assert.equal(multiNoConfirm.body.requireConfirmation, true)
+  assert.equal(multiNoConfirm.body.count, 2)
+
+  // With confirmMultiple
+  const multiConfirm = await f.call('POST', '/api/admin/invitations', {
+    recipientName: 'Esteemed Faculty',
+    email: 'hod1@college.edu, hod2@college.edu',
+    institution: 'Engineering College',
+    designation: 'HOD',
+    category: 'HOD / Faculty',
+    templateKey: 'official',
+    confirmMultiple: true,
+  }, cookie)
+  assert.equal(multiConfirm.status, 201)
+  assert.equal(multiConfirm.body.sentCount, 2)
+
+  // 7. Resend invitation
+  const resendRes = await f.call('POST', `/api/admin/invitations/${invite.id}/resend`, {}, cookie)
+  assert.equal(resendRes.status, 200)
+  assert.equal(resendRes.body.ok, true)
+
+  // 8. Update status to delivered
+  const patchRes = await f.call('PATCH', `/api/admin/invitations/${invite.id}/status`, { status: 'delivered' }, cookie)
+  assert.equal(patchRes.status, 200)
+
+  const updatedCheck = await f.call('GET', '/api/admin/invitations', undefined, cookie)
+  const deliveredInvite = updatedCheck.body.invitations.find((i) => i.id === invite.id)
+  assert.equal(deliveredInvite.status, 'delivered')
+
+  // 8b. Direct HTML preview in new tab
+  const htmlPreviewRes = await f.call('GET', `/api/admin/invitations/${invite.id}/preview`, undefined, cookie)
+  assert.equal(htmlPreviewRes.status, 200)
+  assert.equal(htmlPreviewRes.headers.get('content-type'), 'text/html; charset=utf-8')
+  assert.match(htmlPreviewRes.body, /Dr\. Ramesh Kumar/)
+
+  // 9. Delete invitation
+  const delRes = await f.call('DELETE', `/api/admin/invitations/${invite.id}`, undefined, cookie)
+  assert.equal(delRes.status, 200)
+})
+
+

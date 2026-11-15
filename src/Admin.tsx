@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { AlertCircle, ArrowRight, ChevronDown, Download, ExternalLink, Eye, EyeOff, ImageIcon, Lock, LogOut, Mail, Pencil, Plus, ShieldCheck, Sparkles, Trash2, Unlock, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Download, ExternalLink, Eye, EyeOff, FileText, ImageIcon, Lock, LogOut, Mail, Pencil, Plus, RefreshCw, Send, ShieldCheck, Sparkles, Trash2, Unlock, X } from 'lucide-react'
 import QRCode from 'qrcode'
 import { tracks } from './config/event'
 import { payment as payee, upiLink } from './config/payment'
@@ -74,7 +74,67 @@ type AdminProblemStatement = {
 }
 type Payment = { paymentMethod: PaymentMethod; utrNumber?: string; screenshotDataUrl?: string }
 type Rules = { minTeamSize: number | null; maxTeamSize: number | null; feePerPerson: number; submissionEnabled: boolean }
-type Tab = 'registrations' | 'spot' | 'counts' | 'problem-statements'
+type Tab = 'registrations' | 'spot' | 'counts' | 'problem-statements' | 'invitations'
+
+export type InvitationCategory = 'Internal College' | 'External College' | 'Sponsor' | 'Custom' | 'Principal' | 'HOD / Faculty' | 'Industry Guest' | 'Other Colleges'
+export type InvitationStatus = 'delivered' | 'sent' | 'pending' | 'failed'
+export type InvitationTemplateKey = 'internal' | 'external' | 'sponsor' | 'custom' | 'official' | 'college' | 'guest' | 'industry'
+
+export type Invitation = {
+  id: string
+  recipientName: string
+  email: string
+  institution: string
+  designation: string
+  category: InvitationCategory
+  templateKey: InvitationTemplateKey
+  subject: string
+  message: string
+  status: InvitationStatus
+  sentBy: string
+  createdAt: number
+  sentAt?: number | null
+  lastError?: string | null
+}
+
+export type InvitationTemplate = {
+  id: string
+  name: string
+  category: string
+  subject: string
+  message: string
+}
+
+const defaultInvitationTemplates: Record<string, InvitationTemplate> = {
+  internal: {
+    id: 'internal',
+    name: 'Internal College Invitation',
+    category: 'Internal College',
+    subject: "Invitation to KGRCET's HACKATHON 2027 — 36-Hour National Level Hackathon",
+    message: "On behalf of the Department of Computer Science and Engineering, KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, we are delighted to invite you to be a part of **KGRCET's HACKATHON 2027**, a 36-hour national-level hackathon bringing together student innovators, developers and aspiring entrepreneurs from across the country. We look forward to your encouragement, support and participation in making this event a grand success.",
+  },
+  external: {
+    id: 'external',
+    name: 'External College Invitation',
+    category: 'External College',
+    subject: "Official Invitation: KGRCET's HACKATHON 2027 — 36-Hour National Level Hackathon",
+    message: "On behalf of the Department of Computer Science and Engineering, KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, we cordially invite your esteemed institution to participate in **KGRCET's HACKATHON 2027**, a 36-hour national-level hackathon bringing together student developers, innovators and problem-solvers from across India. We welcome your institution to encourage and nominate talented students and faculty mentors to be part of this exciting initiative.",
+  },
+  sponsor: {
+    id: 'sponsor',
+    name: 'Sponsor Invitation',
+    category: 'Sponsor',
+    subject: "Sponsorship & Brand Partnership Invitation: KGRCET's HACKATHON 2027",
+    message: "We are thrilled to invite your esteemed brand to partner as an official sponsor for KGRCET's HACKATHON 2027, Hyderabad's flagship 36-hour national technology sprint happening on February 19–20, 2027. With 700–1000+ verified student developers, engineers, and researchers building live across Autonomous AI, Cybersecurity, FinTech, and HealthTech, your partnership provides direct brand visibility, talent recruitment access, and community leadership.",
+  },
+  custom: {
+    id: 'custom',
+    name: 'Custom Invitation',
+    category: 'Custom',
+    subject: "Special Invitation: KGRCET's HACKATHON 2027",
+    message: "You are cordially invited to participate and collaborate with KGRCET's HACKATHON 2027, a premier 36-Hour National Level Hackathon on February 19–20, 2027 at KG Reddy College of Engineering & Technology, Hyderabad.",
+  },
+}
 
 const statusLabels: Record<ReviewStatus, string> = { pending: 'Pending', valid: 'Valid', invalid: 'Invalid' }
 const methodLabels: Record<PaymentMethod, string> = { upi: 'UPI', cash: 'Cash' }
@@ -103,7 +163,7 @@ const blankTeam = (): TeamData => ({
 })
 
 class ApiError extends Error {
-  constructor(message: string, readonly status: number, readonly remainingLockoutSeconds?: number) {
+  constructor(message: string, readonly status: number, readonly remainingLockoutSeconds?: number, readonly data?: unknown) {
     super(message)
   }
 }
@@ -121,7 +181,7 @@ async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> 
   // The API always answers in JSON, so anything else came from a proxy or static host in front of it.
   const result = await response.json().catch(() => null)
   if (!result) throw new ApiError(serverUnavailable, response.status)
-  if (!response.ok) throw new ApiError(result.error || 'The request could not be completed.', response.status, result.remainingLockoutSeconds)
+  if (!response.ok) throw new ApiError(result.error || result.message || 'The request could not be completed.', response.status, result.remainingLockoutSeconds, result)
   return result as T
 }
 
@@ -529,6 +589,33 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
   const testEmailDialog = useRef<HTMLDialogElement>(null)
   const psDialog = useRef<HTMLDialogElement>(null)
   const closeRegDialog = useRef<HTMLDialogElement>(null)
+  const createInviteDialog = useRef<HTMLDialogElement>(null)
+
+  // Invitations State
+  const [invitations, setInvitations] = useState<Invitation[]>([])
+  const [invitationStats, setInvitationStats] = useState<{ total: number; delivered: number; sent: number; pending: number; failed: number }>({ total: 0, delivered: 0, sent: 0, pending: 0, failed: 0 })
+  const [inviteTemplates, setInviteTemplates] = useState<Record<string, InvitationTemplate>>(defaultInvitationTemplates)
+  const [inviteSearch, setInviteSearch] = useState('')
+  const [inviteCategoryFilter, setInviteCategoryFilter] = useState<'all' | InvitationCategory>('all')
+  const [inviteStatusFilter, setInviteStatusFilter] = useState<'all' | InvitationStatus>('all')
+
+  // Modals & form state
+  const [createInviteOpen, setCreateInviteOpen] = useState(false)
+  const [inviteUpdating, setInviteUpdating] = useState<string | null>(null)
+
+  const [formRecipientName, setFormRecipientName] = useState('')
+  const [formEmail, setFormEmail] = useState('')
+  const [formInstitution, setFormInstitution] = useState('')
+  const [formDesignation, setFormDesignation] = useState('')
+  const [formCategory, setFormCategory] = useState<InvitationCategory>('Internal College')
+  const [formTemplateKey, setFormTemplateKey] = useState<InvitationTemplateKey>('internal')
+  const [formSubject, setFormSubject] = useState(defaultInvitationTemplates.internal.subject)
+  const [formMessage, setFormMessage] = useState(defaultInvitationTemplates.internal.message)
+  const [formAllowDuplicate, setFormAllowDuplicate] = useState(false)
+  const [formSending, setFormSending] = useState(false)
+  const [formTestSending, setFormTestSending] = useState(false)
+  const [formError, setFormError] = useState('')
+
   const fee = rules?.feePerPerson ?? 649
   // Same team sizes as the website form, unless the server sets its own limits.
   const minPeople = rules?.minTeamSize ?? 2
@@ -742,12 +829,213 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
     return problemStatements.filter((ps) => ps.trackId === psTrackFilter)
   }, [problemStatements, psTrackFilter])
 
+  const fetchInvitations = useCallback(() => {
+    return api<{ invitations: Invitation[]; stats: { total: number; delivered: number; sent: number; pending: number; failed: number } }>('invitations')
+      .then((res) => {
+        if (res?.invitations) setInvitations(res.invitations)
+        if (res?.stats) setInvitationStats(res.stats)
+      })
+      .catch(() => {})
+  }, [])
+
+  const fetchTemplates = useCallback(() => {
+    return api<{ templates: Record<string, InvitationTemplate> }>('invitations/templates')
+      .then((res) => {
+        if (res?.templates) setInviteTemplates(res.templates)
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (createInviteOpen) {
+      if (!createInviteDialog.current?.open) createInviteDialog.current?.showModal()
+    } else {
+      if (createInviteDialog.current?.open) createInviteDialog.current?.close()
+    }
+  }, [createInviteOpen])
+
+  const enteredEmails = useMemo(() => {
+    return formEmail
+      .split(/[\n,;]+/)
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => e.length > 0)
+  }, [formEmail])
+
+  const existingDuplicate = useMemo(() => {
+    if (!enteredEmails.length) return null
+    return invitations.find((inv) => enteredEmails.includes(inv.email.toLowerCase()))
+  }, [enteredEmails, invitations])
+
+  const handleSelectTemplate = (key: InvitationTemplateKey) => {
+    setFormTemplateKey(key)
+    setFormError('')
+    const tpl = inviteTemplates[key] || defaultInvitationTemplates[key]
+    if (tpl) {
+      setFormCategory((tpl.category as InvitationCategory) || 'Internal College')
+      setFormSubject(tpl.subject)
+      setFormMessage(tpl.message)
+    }
+  }
+
+  const openCreateInviteModal = (presetKey: InvitationTemplateKey = 'internal') => {
+    const tpl = inviteTemplates[presetKey] || defaultInvitationTemplates[presetKey] || defaultInvitationTemplates.internal
+    setFormTemplateKey(presetKey)
+    setFormRecipientName('')
+    setFormEmail('')
+    setFormInstitution('')
+    setFormDesignation(presetKey === 'internal' ? 'Faculty / HOD' : presetKey === 'external' ? 'Principal / Dean' : '')
+    setFormCategory((tpl?.category as InvitationCategory) || 'Internal College')
+    setFormSubject(tpl?.subject || '')
+    setFormMessage(tpl?.message || '')
+    setFormAllowDuplicate(false)
+    setFormError('')
+    setCreateInviteOpen(true)
+  }
+
+  const handleSendTestInvite = async () => {
+    setFormTestSending(true)
+    setFormError('')
+    try {
+      await api('invitations', 'POST', {
+        isTest: true,
+        recipientName: formRecipientName.trim() || session.name,
+        designation: formDesignation.trim() || 'Administrator',
+        institution: formInstitution.trim() || 'KG Reddy College of Engineering & Technology',
+        category: formCategory,
+        templateKey: formTemplateKey,
+        subject: formSubject.trim() || undefined,
+        message: formMessage.trim() || undefined,
+      })
+      setToast(`Test invitation dispatched to your email (${session.email})! Check your inbox.`)
+    } catch (err: unknown) {
+      setFormError(errorText(err, 'Failed to dispatch test email.'))
+    } finally {
+      setFormTestSending(false)
+    }
+  }
+
+  const handleCreateInvite = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!formEmail.trim()) {
+      setFormError('Please enter at least one recipient email address.')
+      return
+    }
+
+    if (enteredEmails.length > 1) {
+      const confirmed = window.confirm(`Send official invitation to ${enteredEmails.length} recipients?\n\nEach recipient will receive this personalized invitation email.`)
+      if (!confirmed) return
+    }
+
+    setFormSending(true)
+    setFormError('')
+    try {
+      await api('invitations', 'POST', {
+        recipientName: formRecipientName.trim() || 'Sir / Madam',
+        email: formEmail.trim(),
+        institution: formInstitution.trim() || 'KG Reddy College of Engineering & Technology',
+        designation: formDesignation.trim() || 'Academic Dignitary',
+        category: formCategory,
+        templateKey: formTemplateKey,
+        subject: formSubject.trim() || undefined,
+        message: formMessage.trim() || undefined,
+        allowDuplicate: formAllowDuplicate,
+        confirmMultiple: enteredEmails.length > 1,
+      })
+      setToast(enteredEmails.length > 1 ? `Dispatched invitations to ${enteredEmails.length} recipients.` : `Invitation dispatched to ${formEmail.trim()}.`)
+      setCreateInviteOpen(false)
+      await fetchInvitations()
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 409) {
+        setFormError(`${err.message} Check "Send anyway" below to proceed.`)
+      } else {
+        setFormError(errorText(err, 'Failed to send invitation.'))
+      }
+    } finally {
+      setFormSending(false)
+    }
+  }
+
+  const handleResendInvite = async (inv: Invitation) => {
+    if (!window.confirm(`Resend invitation email to ${inv.recipientName} (${inv.email})?`)) return
+    setInviteUpdating(inv.id)
+    try {
+      await api(`invitations/${inv.id}/resend`, 'POST', {})
+      setToast(`Invitation re-sent to ${inv.email}.`)
+      await fetchInvitations()
+    } catch (err: unknown) {
+      setError(errorText(err, 'Failed to resend invitation.'))
+    } finally {
+      setInviteUpdating(null)
+    }
+  }
+
+  const handleUpdateStatus = async (inv: Invitation, status: InvitationStatus) => {
+    setInviteUpdating(inv.id)
+    try {
+      await api(`invitations/${inv.id}/status`, 'PATCH', { status })
+      setToast(`Status for ${inv.recipientName} updated to ${status.toUpperCase()}.`)
+      await fetchInvitations()
+    } catch (err: unknown) {
+      setError(errorText(err, 'Failed to update delivery status.'))
+    } finally {
+      setInviteUpdating(null)
+    }
+  }
+
+  const handleDeleteInvite = async (inv: Invitation) => {
+    if (!window.confirm(`Delete invitation record for ${inv.recipientName} (${inv.email})?`)) return
+    setInviteUpdating(inv.id)
+    try {
+      await api(`invitations/${inv.id}`, 'DELETE')
+      setToast(`Invitation for ${inv.recipientName} deleted.`)
+      await fetchInvitations()
+    } catch (err: unknown) {
+      setError(errorText(err, 'Failed to delete invitation.'))
+    } finally {
+      setInviteUpdating(null)
+    }
+  }
+
+  const filteredInvitations = useMemo(() => {
+    const query = inviteSearch.trim().toLowerCase()
+    return invitations.filter((inv) => {
+      if (inviteCategoryFilter !== 'all' && inv.category !== inviteCategoryFilter) return false
+      if (inviteStatusFilter !== 'all' && inv.status !== inviteStatusFilter) return false
+      if (query) {
+        return (
+          inv.recipientName.toLowerCase().includes(query) ||
+          inv.email.toLowerCase().includes(query) ||
+          inv.institution.toLowerCase().includes(query) ||
+          inv.designation.toLowerCase().includes(query) ||
+          inv.subject.toLowerCase().includes(query) ||
+          inv.sentBy.toLowerCase().includes(query)
+        )
+      }
+      return true
+    })
+  }, [invitations, inviteSearch, inviteCategoryFilter, inviteStatusFilter])
+
+  const getCategoryClass = (cat: string) => {
+    switch (cat) {
+      case 'Internal College': return 'is-principal'
+      case 'External College': return 'is-college'
+      case 'Principal': return 'is-principal'
+      case 'HOD / Faculty': return 'is-hod'
+      case 'Industry Guest': return 'is-guest'
+      case 'Sponsor': return 'is-sponsor'
+      case 'Other Colleges': return 'is-college'
+      default: return 'is-custom'
+    }
+  }
+
   useEffect(() => {
     let active = true
 
     // Initial load
     fetchRegistrations()
     fetchProblemStatements()
+    fetchInvitations()
+    fetchTemplates()
 
     // 1. Real-time Server-Sent Events (instant push notifications from VPS/backend)
     let sse: EventSource | null = null
@@ -771,10 +1059,14 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
       sse.addEventListener('problem_statements_updated', () => {
         if (active) fetchProblemStatements()
       })
+      sse.addEventListener('invitations_updated', () => {
+        if (active) fetchInvitations()
+      })
       sse.addEventListener('system_settings_updated', () => {
         if (active) {
           fetchRegistrations(true)
           fetchProblemStatements()
+          fetchInvitations()
         }
       })
     } catch {
@@ -997,6 +1289,7 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
     { id: 'spot', label: 'Spot Registration' },
     { id: 'counts', label: `Counts & Collections (${valid.length})` },
     { id: 'problem-statements', label: `Problem Statements (${problemStatements.length})` },
+    { id: 'invitations', label: `Invitations (${invitations.length})` },
   ]
 
   const statusActions = (registration: AdminRegistration) => (
@@ -1283,6 +1576,244 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
                 )}
               </tbody>
             </table>
+          </div>
+        </section>
+      ) : tab === 'invitations' ? (
+        <section aria-label="Official Invitations and Dignitary Outreach">
+          <div className="ps-admin-header-row">
+            <div>
+              <h2 className="admin-section-title">Invitations &amp; Dignitary Relations</h2>
+              <p className="admin-section-note">
+                Create, customize, and dispatch official hackathon invitations to Principals, HODs, Industry Guests, and Sponsors with real-time delivery status tracking.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <a
+                href="/invitation-preview"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-secondary-luxury"
+                title="Preview Official Invitation Email Template in a new tab"
+                style={{ textDecoration: 'none' }}
+              >
+                <ExternalLink size={14} /> Preview Templates
+              </a>
+              <button
+                type="button"
+                className="btn-primary-luxury"
+                onClick={() => openCreateInviteModal()}
+              >
+                <Plus size={16} /> Create Invitation
+              </button>
+            </div>
+          </div>
+
+          {/* Delivery Status Summary Cards */}
+          <div className="invite-stats-grid">
+            <div className="invite-stat-card">
+              <span className="admin-stat-label">Total Dispatched</span>
+              <span className="stat-val">{invitationStats.total}</span>
+              <span style={{ fontSize: '12px', color: 'var(--ink-soft)' }}>All recipients</span>
+            </div>
+            <div className="invite-stat-card is-delivered">
+              <span className="admin-stat-label">Delivered</span>
+              <span className="stat-val">{invitationStats.delivered}</span>
+              <span style={{ fontSize: '12px', color: '#34d399' }}>Confirmed receipt</span>
+            </div>
+            <div className="invite-stat-card is-sent">
+              <span className="admin-stat-label">Sent</span>
+              <span className="stat-val">{invitationStats.sent}</span>
+              <span style={{ fontSize: '12px', color: '#c084fc' }}>Dispatched via SMTP</span>
+            </div>
+            <div className="invite-stat-card is-pending">
+              <span className="admin-stat-label">Pending</span>
+              <span className="stat-val">{invitationStats.pending}</span>
+              <span style={{ fontSize: '12px', color: '#fbbf24' }}>Awaiting send</span>
+            </div>
+            <div className="invite-stat-card is-failed">
+              <span className="admin-stat-label">Failed</span>
+              <span className="stat-val">{invitationStats.failed}</span>
+              <span style={{ fontSize: '12px', color: '#f87171' }}>Delivery issues</span>
+            </div>
+          </div>
+
+          {/* Filters & Search Toolbar */}
+          <div className="admin-toolbar" style={{ marginTop: '16px' }}>
+            <label className="admin-search">
+              <span>Search Recipients</span>
+              <input
+                className="form-input"
+                type="search"
+                value={inviteSearch}
+                onChange={(e) => setInviteSearch(e.target.value)}
+                placeholder="Name, email, college, company, designation…"
+              />
+            </label>
+
+            <label>
+              <span>Recipient Category</span>
+              <select
+                className="form-input"
+                value={inviteCategoryFilter}
+                onChange={(e) => setInviteCategoryFilter(e.target.value as typeof inviteCategoryFilter)}
+              >
+                <option value="all">All Categories ({invitations.length})</option>
+                <option value="Internal College">Internal College ({invitations.filter((i) => i.category === 'Internal College').length})</option>
+                <option value="External College">External College ({invitations.filter((i) => i.category === 'External College').length})</option>
+                <option value="Sponsor">Sponsor ({invitations.filter((i) => i.category === 'Sponsor').length})</option>
+                <option value="Custom">Custom ({invitations.filter((i) => i.category === 'Custom').length})</option>
+              </select>
+            </label>
+
+            <label>
+              <span>Delivery Status</span>
+              <select
+                className="form-input"
+                value={inviteStatusFilter}
+                onChange={(e) => setInviteStatusFilter(e.target.value as typeof inviteStatusFilter)}
+              >
+                <option value="all">All Statuses ({invitations.length})</option>
+                <option value="delivered">Delivered ({invitationStats.delivered})</option>
+                <option value="sent">Sent ({invitationStats.sent})</option>
+                <option value="pending">Pending ({invitationStats.pending})</option>
+                <option value="failed">Failed ({invitationStats.failed})</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="admin-result-line">
+            <p role="status">
+              {inviteSearch
+                ? `Showing ${filteredInvitations.length} of ${invitations.length} invitations matching "${inviteSearch}"`
+                : `Showing ${filteredInvitations.length} of ${invitations.length} invitations`}
+            </p>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                className="btn-secondary-luxury"
+                onClick={() => fetchInvitations()}
+                title="Refresh Invitations List"
+              >
+                <RefreshCw size={13} /> Refresh
+              </button>
+            </div>
+          </div>
+
+          {/* Invitations Table */}
+          <div className="admin-table-wrap">
+            {filteredInvitations.length > 0 ? (
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Recipient</th>
+                    <th>Category</th>
+                    <th>Institution &amp; Role</th>
+                    <th>Subject</th>
+                    <th>Status</th>
+                    <th>Dispatched By</th>
+                    <th style={{ textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredInvitations.map((inv) => (
+                    <tr key={inv.id}>
+                      <td data-label="Recipient">
+                        <strong>{inv.recipientName}</strong>
+                        <small style={{ fontFamily: 'var(--font-mono)', color: 'var(--gold)', display: 'block' }}>
+                          <a href={`mailto:${inv.email}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                            {inv.email}
+                          </a>
+                        </small>
+                      </td>
+                      <td data-label="Category">
+                        <span className={`invite-badge ${getCategoryClass(inv.category)}`}>
+                          {inv.category}
+                        </span>
+                      </td>
+                      <td data-label="Institution & Role">
+                        <div>{inv.institution}</div>
+                        <small style={{ color: 'var(--ink-soft)' }}>{inv.designation}</small>
+                      </td>
+                      <td data-label="Subject">
+                        <div style={{ maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '13px' }} title={inv.subject}>
+                          {inv.subject}
+                        </div>
+                        <small style={{ color: 'var(--ink-faint)', textTransform: 'capitalize' }}>
+                          Template: {inv.templateKey}
+                        </small>
+                      </td>
+                      <td data-label="Status">
+                        <span className={`invite-status-badge is-${inv.status}`}>
+                          {inv.status === 'delivered' && <CheckCircle2 size={11} />}
+                          {inv.status}
+                        </span>
+                        {inv.lastError && (
+                          <small style={{ color: 'var(--danger)', display: 'block', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={inv.lastError}>
+                            {inv.lastError}
+                          </small>
+                        )}
+                      </td>
+                      <td data-label="Dispatched By">
+                        <small style={{ display: 'block', color: 'var(--ink)' }}>{inv.sentBy}</small>
+                        <small style={{ color: 'var(--ink-soft)' }}>{formatDate(inv.sentAt || inv.createdAt)}</small>
+                      </td>
+                      <td data-label="Actions" className="admin-actions">
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                          <a
+                            href={`/api/admin/invitations/${inv.id}/preview`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn-secondary-luxury"
+                            style={{ minHeight: '30px', padding: '3px 8px', fontSize: '11.5px', textDecoration: 'none' }}
+                            title="Preview Invitation Email in a new tab"
+                          >
+                            <ExternalLink size={12} /> Preview
+                          </a>
+                          <button
+                            type="button"
+                            className="btn-secondary-luxury"
+                            style={{ minHeight: '30px', padding: '3px 8px', fontSize: '11.5px' }}
+                            disabled={inviteUpdating === inv.id}
+                            onClick={() => handleResendInvite(inv)}
+                            title="Resend Invitation Email"
+                          >
+                            <RefreshCw size={12} className={inviteUpdating === inv.id ? 'spin' : ''} /> Resend
+                          </button>
+                          <select
+                            className="form-input"
+                            style={{ minHeight: '30px', padding: '2px 6px', fontSize: '11px', width: 'auto' }}
+                            value={inv.status}
+                            onChange={(e) => handleUpdateStatus(inv, e.target.value as InvitationStatus)}
+                            title="Update delivery status"
+                          >
+                            <option value="delivered">Delivered</option>
+                            <option value="sent">Sent</option>
+                            <option value="pending">Pending</option>
+                            <option value="failed">Failed</option>
+                          </select>
+                          <button
+                            type="button"
+                            className="btn-secondary-luxury"
+                            style={{ minHeight: '30px', padding: '3px 6px', fontSize: '11.5px', color: 'var(--danger)' }}
+                            disabled={inviteUpdating === inv.id}
+                            onClick={() => handleDeleteInvite(inv)}
+                            title="Delete Invitation Record"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="admin-empty">
+                {invitations.length
+                  ? 'No invitations match the selected filters.'
+                  : 'No invitations dispatched yet. Click "Create Invitation" above to send official invites to Principals, HODs, Industry Guests, and Sponsors.'}
+              </p>
+            )}
           </div>
         </section>
       ) : (
@@ -1754,6 +2285,252 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
               <span>{closeRegSubmitting ? 'Confirming...' : registrationOpen ? 'Confirm & Close Registrations' : 'Confirm & Open Registrations'}</span>
               <ArrowRight size={14} />
             </button>
+          </div>
+        </form>
+      </dialog>
+
+      {/* Create Official Invitation Dialog */}
+      <dialog
+        ref={createInviteDialog}
+        className="invite-dialog"
+        onClose={() => setCreateInviteOpen(false)}
+        onClick={(e) => {
+          if (e.target === createInviteDialog.current) setCreateInviteOpen(false)
+        }}
+      >
+        <header className="ps-dialog-header">
+          <div>
+            <span className="admin-stat-label">Dignitary &amp; Partner Outreach</span>
+            <h3 style={{ margin: '2px 0 0', fontSize: '20px' }}>Create Official Invitation</h3>
+          </div>
+          <button
+            type="button"
+            className="admin-proof-close"
+            onClick={() => setCreateInviteOpen(false)}
+            aria-label="Close dialog"
+          >
+            <X size={18} />
+          </button>
+        </header>
+
+        <form onSubmit={handleCreateInvite} className="ps-dialog-form">
+          {formError && <p className="admin-error" role="alert">{formError}</p>}
+
+          {/* Predefined Template Quick Selector */}
+          <div className="form-group">
+            <label htmlFor="inv-template-select">
+              <strong>Select Predefined Template</strong>
+              <small style={{ color: 'var(--ink-soft)', display: 'block', fontWeight: 400, marginTop: '2px' }}>
+                Choosing a template pre-populates category, subject, and tailored copy. All fields remain fully editable.
+              </small>
+            </label>
+            <select
+              id="inv-template-select"
+              className="form-input"
+              value={formTemplateKey}
+              onChange={(e) => handleSelectTemplate(e.target.value as InvitationTemplateKey)}
+            >
+              <option value="internal">1. Internal College Invitation</option>
+              <option value="external">2. External College Invitation (Other Colleges)</option>
+              <option value="sponsor">3. Sponsor Invitation</option>
+              <option value="custom">4. Custom Invitation</option>
+            </select>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+            <div className="form-group">
+              <label htmlFor="inv-category-select">Recipient Category *</label>
+              <select
+                id="inv-category-select"
+                className="form-input"
+                value={formCategory}
+                onChange={(e) => {
+                  setFormCategory(e.target.value as InvitationCategory)
+                  setFormError('')
+                }}
+                required
+              >
+                <option value="Internal College">Internal College</option>
+                <option value="External College">External College</option>
+                <option value="Sponsor">Sponsor</option>
+                <option value="Custom">Custom</option>
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="inv-name-input">Recipient Name *</label>
+              <input
+                id="inv-name-input"
+                className="form-input"
+                type="text"
+                placeholder="e.g. Dr. K. S. Rao / Shri Rajesh Sharma"
+                value={formRecipientName}
+                onChange={(e) => {
+                  setFormRecipientName(e.target.value)
+                  setFormError('')
+                }}
+                required
+              />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+            <div className="form-group">
+              <label htmlFor="inv-inst-input">Institution / Organisation</label>
+              <input
+                id="inv-inst-input"
+                className="form-input"
+                type="text"
+                placeholder="e.g. JNTUH College of Engineering"
+                value={formInstitution}
+                onChange={(e) => {
+                  setFormInstitution(e.target.value)
+                  setFormError('')
+                }}
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="inv-desig-input">Designation</label>
+              <input
+                id="inv-desig-input"
+                className="form-input"
+                type="text"
+                placeholder="e.g. Principal / Head of Department"
+                value={formDesignation}
+                onChange={(e) => {
+                  setFormDesignation(e.target.value)
+                  setFormError('')
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="inv-email-input">
+              Email Address(es) *
+              <small style={{ color: 'var(--ink-soft)', marginLeft: '8px', fontWeight: 400 }}>
+                (Separate multiple emails with commas)
+              </small>
+            </label>
+            <input
+              id="inv-email-input"
+              className="form-input"
+              type="text"
+              placeholder="e.g. principal@college.ac.in, hod.cse@college.ac.in"
+              value={formEmail}
+              onChange={(e) => {
+                setFormEmail(e.target.value)
+                setFormError('')
+              }}
+              required
+            />
+          </div>
+
+          {/* Duplicate Protection Live Warning & Override */}
+          {(existingDuplicate || formAllowDuplicate || (formError && formError.toLowerCase().includes('duplicate'))) && (
+            <div className="invite-warning-banner" role="alert">
+              <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px', color: '#fbbf24' }} />
+              <div style={{ flex: 1 }}>
+                {existingDuplicate ? (
+                  <div>
+                    <strong>Duplicate Warning:</strong> An invitation has already been dispatched to{' '}
+                    <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--gold)' }}>{existingDuplicate.email}</span> on{' '}
+                    {formatDate(existingDuplicate.createdAt)} (Status:{' '}
+                    <strong>{existingDuplicate.status.toUpperCase()}</strong>) by {existingDuplicate.sentBy}.
+                  </div>
+                ) : (
+                  <div>
+                    <strong>Duplicate Warning:</strong> One or more of these recipients have already received an invitation.
+                  </div>
+                )}
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', cursor: 'pointer', color: '#f5efe3' }}>
+                  <input
+                    type="checkbox"
+                    checked={formAllowDuplicate}
+                    onChange={(e) => {
+                      setFormAllowDuplicate(e.target.checked)
+                      if (e.target.checked) setFormError('')
+                    }}
+                  />
+                  <span>Send anyway (override duplicate protection)</span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          <div className="form-group">
+            <label htmlFor="inv-subj-input">Custom Email Subject *</label>
+            <input
+              id="inv-subj-input"
+              className="form-input"
+              type="text"
+              value={formSubject}
+              onChange={(e) => {
+                setFormSubject(e.target.value)
+                setFormError('')
+              }}
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="inv-msg-input">Editable Invitation Message *</label>
+            <textarea
+              id="inv-msg-input"
+              className="form-input"
+              rows={5}
+              value={formMessage}
+              onChange={(e) => {
+                setFormMessage(e.target.value)
+                setFormError('')
+              }}
+              required
+              style={{ resize: 'vertical' }}
+            />
+          </div>
+
+          {/* Differentiator & Attachment Callout */}
+          <div className="invite-feature-callout">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--gold)', fontWeight: 600, marginBottom: '4px' }}>
+              <FileText size={14} /> Official Brochure Specification Included
+            </div>
+            <div>
+              <strong>Key Differentiator Included:</strong> Unlike conventional hackathons, this initiative aims to connect students with real-world industry challenges, encouraging them to build practical solutions with opportunities for further development beyond the event.
+            </div>
+            <div style={{ marginTop: '4px', fontSize: '11.5px', color: 'var(--ink-soft)' }}>
+              Projected Scale: <strong>700–1000 builders</strong> · Dates: <strong>Feb 19–20, 2027</strong> · Venue: <strong>KGRCET Hyderabad</strong>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginTop: '12px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn-secondary-luxury"
+              onClick={handleSendTestInvite}
+              disabled={formTestSending || formSending}
+              title={`Dispatches a sample test invitation to your admin email (${session.email})`}
+            >
+              <Mail size={14} /> {formTestSending ? 'Sending Test...' : 'Send Test to Myself'}
+            </button>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                className="btn-secondary-luxury"
+                onClick={() => setCreateInviteOpen(false)}
+                disabled={formSending}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn-primary-luxury"
+                disabled={formSending}
+              >
+                <Send size={14} /> {formSending ? 'Dispatching...' : enteredEmails.length > 1 ? `Send to ${enteredEmails.length} Recipients` : 'Send Invitation'}
+              </button>
+            </div>
           </div>
         </form>
       </dialog>

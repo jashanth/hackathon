@@ -58,8 +58,10 @@ export const EVENT_DETAILS = {
   duration: '36 Hours Non-Stop Sprint',
   theme: 'Autonomous AI, Cybersecurity & Breakthrough Systems',
   venue: 'KG Reddy College of Engineering & Technology, Beside Moinabad Police Station, Chilkur, Moinabad, Hyderabad, Telangana - 501504',
-  organizer: 'Cybersecurity & Ethical Hacking Club (CSEH Club)',
+  organizer: 'Cybersecurity & Ethical Hacking Club (CSEH)',
   contactEmail: 'cseh@kgrcet.edu.in',
+  websiteUrl: 'https://hackathon.cybersec-kgrcet.com/',
+  logoUrl: 'https://hackathon.cybersec-kgrcet.com/assets/kgrcet-logo.png',
 }
 
 /**
@@ -358,6 +360,456 @@ Venue : ${event.venue}
 Queries: ${event.contactEmail}
 
 Organized by ${event.organizer}
+==================================================
+  `.trim()
+
+  return { subject, html, text }
+}
+
+/**
+ * Predefined invitation templates for different dignitary and partner categories.
+ */
+export const INVITATION_TEMPLATES = {
+  internal: {
+    id: 'internal',
+    name: 'Internal College Invitation',
+    category: 'Internal College',
+    subject: "Invitation to KGRCET's HACKATHON 2027 — 36-Hour National Level Hackathon",
+    message: "On behalf of the Department of Computer Science and Engineering, KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, we are delighted to invite you to be a part of **KGRCET's HACKATHON 2027**, a 36-hour national-level hackathon bringing together student innovators, developers and aspiring entrepreneurs from across the country. We look forward to your encouragement, support and participation in making this event a grand success.",
+  },
+  external: {
+    id: 'external',
+    name: 'External College Invitation',
+    category: 'External College',
+    subject: "Official Invitation: KGRCET's HACKATHON 2027 — 36-Hour National Level Hackathon",
+    message: "On behalf of the Department of Computer Science and Engineering, KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, we cordially invite your esteemed institution to participate in **KGRCET's HACKATHON 2027**, a 36-hour national-level hackathon bringing together student developers, innovators and problem-solvers from across India. We welcome your institution to encourage and nominate talented students and faculty mentors to be part of this exciting initiative.",
+  },
+  sponsor: {
+    id: 'sponsor',
+    name: 'Sponsor Invitation',
+    category: 'Sponsor',
+    subject: "Sponsorship & Brand Partnership Invitation: KGRCET's HACKATHON 2027",
+    message: "We are thrilled to invite your esteemed brand to partner as an official sponsor for KGRCET's HACKATHON 2027, Hyderabad's flagship 36-hour national technology sprint happening on February 19–20, 2027. With 700–1000+ verified student developers, engineers, and researchers building live across Autonomous AI, Cybersecurity, FinTech, and HealthTech, your partnership provides direct brand visibility, talent recruitment access, and community leadership.",
+  },
+  custom: {
+    id: 'custom',
+    name: 'Custom Invitation',
+    category: 'Custom',
+    subject: "Special Invitation: KGRCET's HACKATHON 2027",
+    message: "You are cordially invited to participate and collaborate with KGRCET's HACKATHON 2027, a premier 36-Hour National Level Hackathon on February 19–20, 2027 at KG Reddy College of Engineering & Technology, Hyderabad.",
+  },
+}
+
+// Aliases for backwards compatibility
+INVITATION_TEMPLATES.official = INVITATION_TEMPLATES.internal
+INVITATION_TEMPLATES.college = INVITATION_TEMPLATES.external
+
+/**
+ * Generates personalized HTML and plain text invitation emails for dignitaries, HODs, principals, guests and sponsors.
+ */
+export function renderInvitationEmail({
+  recipientName = 'Sir / Madam',
+  designation = 'Academic Dignitary',
+  institution = 'KG Reddy College of Engineering & Technology',
+  category = 'Internal College',
+  templateKey = 'internal',
+  subject: customSubject,
+  message: customMessage,
+  ctaNote,
+  event = EVENT_DETAILS,
+}) {
+  const template = INVITATION_TEMPLATES[templateKey] || INVITATION_TEMPLATES.internal || INVITATION_TEMPLATES.official
+  const safeRecipient = sanitizeHeader(recipientName || 'Sir / Madam')
+  const safeDesignation = sanitizeHeader(designation || 'Academic Dignitary')
+  const safeInstitution = sanitizeHeader(institution || 'KG Reddy College of Engineering & Technology')
+  const safeCategory = sanitizeHeader(category || template.category || 'Internal College')
+  const subject = customSubject ? sanitizeHeader(customSubject) : template.subject
+  const bodyMessage = (customMessage || template.message).trim()
+
+  const messageParagraphsHtml = bodyMessage
+    .split(/\n\s*\n/)
+    .map((p) => `<p style="margin: 0 0 16px 0; font-size: 14.5px; line-height: 1.7; color: #c2b9ab;">${escapeHtml(p).replace(/\*\*([^*]+)\*\*/g, '<strong style="color: #ffffff;">$1</strong>').replace(/\n/g, '<br>')}</p>`)
+    .join('')
+
+  const isExternalInstitution = templateKey === 'external' || templateKey === 'college' || safeCategory.toLowerCase().includes('external') || safeCategory.toLowerCase().includes('other')
+  const shouldShowCtaNote = ctaNote !== undefined ? Boolean(ctaNote) : isExternalInstitution
+
+  const ctaNoteTextContent = ctaNote !== undefined
+    ? String(ctaNote || '').trim()
+    : (shouldShowCtaNote
+      ? "We encourage your institution to share this invitation with interested students and faculty members and motivate them to participate in this national-level initiative.\n\nWe look forward to your institution's participation and to building meaningful connections between students, academia and industry."
+      : '')
+
+  const ctaNoteHtml = ctaNoteTextContent
+    ? `
+              <!-- Institutional Outreach & Call to Action Message -->
+              <div style="margin: 28px 0 24px 0; padding: 18px 20px; background-color: #120e18; border: 1px solid #2a2016; border-left: 3px solid #dcb872; border-radius: 3px;">
+                ${ctaNoteTextContent
+                  .split(/\n\s*\n/)
+                  .map((p, idx) => `<p style="margin: 0${idx === 0 ? ' 0 10px 0' : ''}; font-size: 14px; line-height: 1.65; color: ${idx === 0 ? '#f5efe3' : '#dcb872'};">${escapeHtml(p).replace(/\*\*([^*]+)\*\*/g, '<strong style="color: #ffffff;">$1</strong>').replace(/\n/g, '<br>')}</p>`)
+                  .join('')}
+              </div>`
+    : ''
+
+  const ctaNotePlainText = ctaNoteTextContent ? `\n${ctaNoteTextContent}\n` : ''
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="color-scheme" content="dark">
+  <meta name="supported-color-schemes" content="dark">
+  <title>${escapeHtml(subject)}</title>
+  
+  <!-- Web fonts with web-safe fallbacks -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Geist+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* Client resets */
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+    
+    /* Responsive breakpoints */
+    @media only screen and (max-width: 620px) {
+      .email-container { width: 100% !important; max-width: 100% !important; }
+      .mobile-p-20 { padding: 24px 18px !important; }
+      .mobile-title { font-size: 27px !important; line-height: 1.15 !important; }
+      .mobile-stat-col { display: block !important; width: 100% !important; margin-bottom: 12px !important; }
+    }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #07060a; font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5efe3; -webkit-font-smoothing: antialiased;">
+
+  <!-- Outer Canvas (Deep Obsidian / Void) -->
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #07060a; padding: 40px 12px;">
+    <tr>
+      <td align="center">
+        
+        <!-- Main Card Container -->
+        <table role="presentation" class="email-container" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 620px; background-color: #0e0b13; border: 1px solid #332718; border-radius: 4px; overflow: hidden; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85);">
+          
+          <!-- Top Celestial Gold Foil Accent Bar -->
+          <tr>
+            <td style="height: 3px; background: #dcb872; background: linear-gradient(90deg, #94702f 0%, #dcb872 30%, #fff4d6 50%, #dcb872 70%, #94702f 100%); font-size: 1px; line-height: 1px;">&nbsp;</td>
+          </tr>
+
+          <!-- Banner / Grand Institutional Header -->
+          <tr>
+            <td class="mobile-p-20" style="background-color: #120e18; background: linear-gradient(180deg, #171120 0%, #0e0b13 100%); padding: 36px 32px 28px; text-align: center; border-bottom: 1px solid #2a2016;">
+
+              <!-- College Logo Plate -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin: 0 auto 20px;">
+                <tr>
+                  <td align="center" style="background: #ffffff; padding: 8px 16px; border-radius: 4px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);">
+                    <img src="${escapeHtml(event.logoUrl || 'https://hackathon.cybersec-kgrcet.com/assets/kgrcet-logo.png')}" onerror="this.onerror=null;this.src='/assets/kgrcet-logo.png'" alt="KG Reddy College of Engineering &amp; Technology" width="180" style="display: block; width: 180px; max-width: 100%; height: auto; border: 0; outline: none; text-decoration: none;" />
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Grand Hackathon Title (Cormorant Serif Display) -->
+              <h1 class="mobile-title" style="margin: 0; font-family: 'Cormorant', Garamond, 'Times New Roman', Georgia, serif; font-size: 34px; font-weight: 300; line-height: 1.1; letter-spacing: -0.01em; color: #ffffff;">
+                KGRCET's HACKATHON <span style="font-style: italic; color: #dcb872; font-weight: 400;">2027</span>
+              </h1>
+
+              <!-- Tagline (Mono Spaced) -->
+              <p style="margin: 10px 0 0 0; font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 400; color: #c2b9ab; letter-spacing: 2.4px; text-transform: uppercase;">
+                A 36-HOUR NATIONAL LEVEL HACKATHON
+              </p>
+
+              <!-- Affiliation Badges -->
+              <div style="margin-top: 14px; font-family: 'Geist Mono', monospace; font-size: 9.5px; color: #94897c; letter-spacing: 1.2px; text-transform: uppercase;">
+                Led by <span style="color: #f8e8c0;">CSEH Club</span> · in association with <span style="color: #f8e8c0;">Blockchain Club</span> &amp; <span style="color: #f8e8c0;">CSI Student Chapter</span>
+              </div>
+
+            </td>
+          </tr>
+
+          <!-- Content Body -->
+          <tr>
+            <td class="mobile-p-20" style="padding: 34px 32px;">
+              
+              <!-- Official Invitation Badge -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin-bottom: 24px;">
+                <tr>
+                  <td style="background-color: #1a140d; border: 1px solid #dcb872; padding: 6px 14px; border-radius: 2px;">
+                    <span style="font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 600; color: #f8e8c0; letter-spacing: 1.6px; text-transform: uppercase;">
+                      ✦ OFFICIAL EVENT INVITATION
+                    </span>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Formal Dignitary Salutation -->
+              <h2 style="margin: 0 0 8px 0; font-family: 'Cormorant', Garamond, 'Times New Roman', Georgia, serif; font-size: 26px; font-weight: 400; color: #ffffff; letter-spacing: 0.01em; line-height: 1.25;">
+                Respected ${escapeHtml(safeRecipient)},
+              </h2>
+              
+              <div style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #dcb872; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 22px;">
+                ${escapeHtml(safeDesignation)}${safeInstitution ? ` · ${escapeHtml(safeInstitution)}` : ''}
+              </div>
+
+              <!-- Message Body -->
+              ${messageParagraphsHtml}
+
+              <!-- The Differentiator Card (Gold & Amethyst Highlight) -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #16101d; border: 1px solid #dcb872; border-radius: 3px; margin: 24px 0 28px;">
+                <tr>
+                  <td style="padding: 18px 20px;">
+                    <div style="font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10.5px; font-weight: 600; color: #dcb872; letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 8px;">
+                      ✦ OUR CORE DIFFERENTIATOR
+                    </div>
+                    <p style="margin: 0; font-size: 14px; line-height: 1.65; color: #f8e8c0; font-style: italic;">
+                      Unlike conventional hackathons, this initiative aims to connect students with real-world industry challenges, encouraging them to build practical solutions with opportunities for further development beyond the event.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Key Highlights Plaque (Obsidian & Gold) -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #120e18; border: 1px solid #332718; border-left: 3px solid #dcb872; border-radius: 3px; margin-bottom: 28px;">
+                <tr>
+                  <td style="padding: 20px 22px;">
+                    
+                    <div style="font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10.5px; font-weight: 600; color: #dcb872; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #231b26;">
+                      EVENT AT A GLANCE
+                    </div>
+
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="font-size: 13.5px; line-height: 1.65;">
+                      <tr>
+                        <td style="padding: 7px 0; width: 34%; font-family: 'Geist Mono', monospace; font-size: 11px; color: #94897c; text-transform: uppercase;">Duration:</td>
+                        <td style="padding: 7px 0; color: #f5efe3; font-weight: 600;">36 Continuous Hours Non-Stop</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 7px 0; font-family: 'Geist Mono', monospace; font-size: 11px; color: #94897c; text-transform: uppercase; border-top: 1px solid #1c1524;">Event Dates:</td>
+                        <td style="padding: 7px 0; color: #f8e8c0; font-weight: 600; border-top: 1px solid #1c1524;">February 19–20, 2027</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 7px 0; font-family: 'Geist Mono', monospace; font-size: 11px; color: #94897c; text-transform: uppercase; border-top: 1px solid #1c1524;">Builders Scale:</td>
+                        <td style="padding: 7px 0; color: #f8e8c0; font-weight: 600; border-top: 1px solid #1c1524;">700–1000 Builders Nationwide</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 7px 0; font-family: 'Geist Mono', monospace; font-size: 11px; color: #94897c; text-transform: uppercase; border-top: 1px solid #1c1524;">Prize Pool:</td>
+                        <td style="padding: 7px 0; color: #dcb872; font-weight: 600; font-family: 'Geist Mono', monospace; border-top: 1px solid #1c1524;">INR 1,00,000 <span style="font-size: 11px; color: #94897c; font-weight: 400;">(Provisional Awards)</span></td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 7px 0; font-family: 'Geist Mono', monospace; font-size: 11px; color: #94897c; text-transform: uppercase; border-top: 1px solid #1c1524;">Venue:</td>
+                        <td style="padding: 7px 0; color: #c2b9ab; border-top: 1px solid #1c1524;">${escapeHtml(event.venue)}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 7px 0; font-family: 'Geist Mono', monospace; font-size: 11px; color: #94897c; text-transform: uppercase; border-top: 1px solid #1c1524;">Team Composition:</td>
+                        <td style="padding: 7px 0; color: #f5efe3; border-top: 1px solid #1c1524;">2 to 4 Students per Team (Interdisciplinary Teams Welcome)</td>
+                      </tr>
+                    </table>
+
+                  </td>
+                </tr>
+              </table>
+
+              <!-- 5 Challenge Domains -->
+              <div style="margin-bottom: 28px;">
+                <h3 style="margin: 0 0 12px 0; font-family: 'Cormorant', Garamond, 'Times New Roman', Georgia, serif; font-size: 21px; font-weight: 400; color: #f5efe3; letter-spacing: 0.02em;">
+                  5 Challenge Domains &amp; Innovation Tracks
+                </h3>
+                
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #0e0b13; border: 1px solid #231b26; border-radius: 3px;">
+                  <tr>
+                    <td style="padding: 11px 14px; border-bottom: 1px solid #1c1524;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                        <tr>
+                          <td style="font-size: 13.5px; color: #f5efe3;">
+                            <span style="font-family: 'Geist Mono', monospace; color: #dcb872; font-weight: 600; margin-right: 8px;">01</span> 
+                            <strong>Generative AI &amp; Automation</strong>
+                          </td>
+                          <td align="right" style="font-family: 'Geist Mono', monospace; font-size: 10px; color: #94897c; text-transform: uppercase; letter-spacing: 1px;">Track 01</td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 11px 14px; border-bottom: 1px solid #1c1524;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                        <tr>
+                          <td style="font-size: 13.5px; color: #f5efe3;">
+                            <span style="font-family: 'Geist Mono', monospace; color: #dcb872; font-weight: 600; margin-right: 8px;">02</span> 
+                            <strong>Cybersecurity &amp; Digital Forensics</strong>
+                          </td>
+                          <td align="right" style="font-family: 'Geist Mono', monospace; font-size: 10px; color: #94897c; text-transform: uppercase; letter-spacing: 1px;">Track 02</td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 11px 14px; border-bottom: 1px solid #1c1524;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                        <tr>
+                          <td style="font-size: 13.5px; color: #f5efe3;">
+                            <span style="font-family: 'Geist Mono', monospace; color: #dcb872; font-weight: 600; margin-right: 8px;">03</span> 
+                            <strong>FinTech &amp; Blockchain</strong>
+                          </td>
+                          <td align="right" style="font-family: 'Geist Mono', monospace; font-size: 10px; color: #94897c; text-transform: uppercase; letter-spacing: 1px;">Track 03</td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 11px 14px; border-bottom: 1px solid #1c1524;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                        <tr>
+                          <td style="font-size: 13.5px; color: #f5efe3;">
+                            <span style="font-family: 'Geist Mono', monospace; color: #dcb872; font-weight: 600; margin-right: 8px;">04</span> 
+                            <strong>HealthTech &amp; Mental Well-being</strong>
+                          </td>
+                          <td align="right" style="font-family: 'Geist Mono', monospace; font-size: 10px; color: #94897c; text-transform: uppercase; letter-spacing: 1px;">Track 04</td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 11px 14px;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                        <tr>
+                          <td style="font-size: 13.5px; color: #f5efe3;">
+                            <span style="font-family: 'Geist Mono', monospace; color: #dcb872; font-weight: 600; margin-right: 8px;">05</span> 
+                            <strong>Open Innovation (Open Track)</strong>
+                          </td>
+                          <td align="right" style="font-family: 'Geist Mono', monospace; font-size: 10px; color: #94897c; text-transform: uppercase; letter-spacing: 1px;">Track 05</td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- Call to Action Note (Institutional Outreach) -->
+              ${ctaNoteHtml}
+
+              <!-- Call to Action (Register Teams & Explore) -->
+              <div style="text-align: center; margin: 32px 0;">
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin: 0 auto 12px;">
+                  <tr>
+                    <td align="center" style="background-color: #dcb872; background: linear-gradient(135deg, #f8e8c0 0%, #dcb872 60%, #b8924b 100%); border-radius: 3px; box-shadow: 0 4px 18px rgba(220, 184, 114, 0.35);">
+                      <a href="https://hackathon.cybersec-kgrcet.com/register" target="_blank" style="display: inline-block; padding: 14px 34px; font-family: 'Geist Mono', monospace; font-size: 13px; font-weight: 600; color: #0f0c08; text-decoration: none; text-transform: uppercase; letter-spacing: 1.5px;">
+                        REGISTER STUDENT TEAMS ↗
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+                <div style="font-family: 'Geist Mono', monospace; font-size: 11px; color: #94897c;">
+                  Official Website: <a href="https://hackathon.cybersec-kgrcet.com/" target="_blank" style="color: #dcb872; text-decoration: underline;">hackathon.cybersec-kgrcet.com</a>
+                </div>
+              </div>
+
+              <!-- Formal Committee Sign-Off -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-top: 1px solid #231b26; padding-top: 22px; margin-top: 24px;">
+                <tr>
+                  <td>
+                    <p style="margin: 0 0 16px 0; font-size: 14px; color: #94897c; line-height: 1.6;">
+                      Warm Regards,
+                    </p>
+                    <p style="margin: 0 0 4px 0; font-size: 15px; font-weight: 600; color: #f5efe3;">
+                      Cybersecurity &amp; Ethical Hacking Club (CSEH)
+                    </p>
+                    <p style="margin: 0 0 12px 0; font-size: 13px; color: #dcb872;">
+                      In association with Blockchain Club &amp; CSI Student Chapter
+                    </p>
+                    <p style="margin: 0 0 2px 0; font-size: 13px; color: #c2b9ab;">
+                      KG Reddy College of Engineering &amp; Technology
+                    </p>
+                    <p style="margin: 0; font-size: 12px; color: #94897c;">
+                      Hyderabad, Telangana, India
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+          <!-- Footer / Legal & Campus Details -->
+          <tr>
+            <td style="background-color: #09070d; border-top: 1px solid #1f1722; padding: 26px 32px; text-align: center;">
+              
+              <div style="font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; color: #dcb872; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px;">
+                KG REDDY COLLEGE OF ENGINEERING AND TECHNOLOGY
+              </div>
+
+              <p style="margin: 0 0 10px 0; font-size: 12px; line-height: 1.5; color: #94897c;">
+                Beside Moinabad Police Station, Chilkur Village, Moinabad Mandal, Ranga Reddy District, Hyderabad, Telangana — 501504
+              </p>
+
+              <p style="margin: 0; font-family: 'Geist Mono', monospace; font-size: 11px; color: #94897c;">
+                Inquiries &amp; Official Communications: <a href="mailto:${escapeHtml(event.contactEmail)}" style="color: #dcb872; text-decoration: none;">${escapeHtml(event.contactEmail)}</a>
+              </p>
+
+              <div style="margin-top: 16px; font-size: 10.5px; color: #5a5246; font-family: 'Geist Mono', monospace;">
+                © 2027 KGRCET · DEPARTMENT OF COMPUTER SCIENCE AND ENGINEERING · ALL RIGHTS RESERVED
+              </div>
+
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>
+  `.trim()
+
+  const text = `
+==================================================
+KGRCET's HACKATHON 2027
+A 36-HOUR NATIONAL LEVEL HACKATHON
+==================================================
+
+OFFICIAL EVENT INVITATION
+
+Respected ${safeRecipient},
+${safeDesignation}${safeInstitution ? ` · ${safeInstitution}` : ''}
+
+${bodyMessage}
+
+OUR CORE DIFFERENTIATOR:
+--------------------------------------------------
+Unlike conventional hackathons, this initiative aims to connect students with real-world industry challenges, encouraging them to build practical solutions with opportunities for further development beyond the event.
+
+EVENT AT A GLANCE:
+--------------------------------------------------
+Duration        : 36 Continuous Hours Non-Stop
+Dates           : ${event.dates}
+Scale           : 700–1000 Builders Nationwide
+Prize Pool      : INR 1,00,000 (Provisional Awards)
+Venue           : ${event.venue}
+Team Size       : 2 to 4 Students per Team
+
+5 CHALLENGE DOMAINS:
+--------------------------------------------------
+01. Generative AI & Automation
+02. Cybersecurity & Digital Forensics
+03. FinTech & Blockchain
+04. HealthTech & Mental Well-being
+05. Open Innovation (Open Track)
+${ctaNotePlainText}
+Register Student Teams: https://hackathon.cybersec-kgrcet.com/register
+Official Website      : https://hackathon.cybersec-kgrcet.com/
+
+Queries & Inquiries   : ${event.contactEmail}
+
+Warm Regards,
+
+Cybersecurity & Ethical Hacking Club (CSEH)
+In association with Blockchain Club & CSI Student Chapter
+KG Reddy College of Engineering & Technology
+Hyderabad, Telangana, India
 ==================================================
   `.trim()
 

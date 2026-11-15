@@ -5,7 +5,7 @@ import { mkdirSync } from 'node:fs'
 import { extname, join, normalize, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
-import { initEmailTables, createSmtpTransport, enqueueConfirmationEmails, processEmailQueue, isValidEmail, renderMemberConfirmationEmail, sanitizeHeader, sanitizeErrorMessage } from './email-service.mjs'
+import { initEmailTables, createSmtpTransport, enqueueConfirmationEmails, processEmailQueue, isValidEmail, renderMemberConfirmationEmail, renderInvitationEmail, INVITATION_TEMPLATES, EVENT_DETAILS, sanitizeHeader, sanitizeErrorMessage } from './email-service.mjs'
 
 export class RateLimiter {
   constructor({ windowMs, maxRequests }) {
@@ -577,6 +577,51 @@ export function initProblemStatementsTable(db) {
   }
 }
 
+export function initInvitationsTable(db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS invitations (
+      id TEXT PRIMARY KEY,
+      recipient_name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      institution TEXT NOT NULL,
+      designation TEXT NOT NULL,
+      category TEXT NOT NULL,
+      template_key TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      message TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'sent',
+      sent_by TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      sent_at INTEGER,
+      last_error TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_invitations_email ON invitations(email);
+    CREATE INDEX IF NOT EXISTS idx_invitations_created ON invitations(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_invitations_category ON invitations(category);
+    CREATE INDEX IF NOT EXISTS idx_invitations_status ON invitations(status);
+  `)
+}
+
+export function publicInvitation(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    recipientName: row.recipient_name,
+    email: row.email,
+    institution: row.institution,
+    designation: row.designation,
+    category: row.category,
+    templateKey: row.template_key,
+    subject: row.subject,
+    message: row.message,
+    status: row.status,
+    sentBy: row.sent_by,
+    createdAt: row.created_at,
+    sentAt: row.sent_at,
+    lastError: row.last_error,
+  }
+}
+
 export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJson, mailer: customMailer } = {}) {
   const secure = process.env.NODE_ENV === 'production'
   const rawAdminConfig = adminAccounts ?? adminAccountsJson ?? process.env.ADMIN_ACCOUNTS_JSON
@@ -676,6 +721,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
 
   initEmailTables(db)
   initProblemStatementsTable(db)
+  initInvitationsTable(db)
 
   const apiLimiter = new RateLimiter({ windowMs: 60 * 1000, maxRequests: 300 })
   const loginLimiter = new RateLimiter({ windowMs: 15 * 60 * 1000, maxRequests: 25 })
@@ -1380,6 +1426,315 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       return json(res, 200, { ok: true, problemStatementsReleased: released })
     }
 
+    // 17. Invitations: Get predefined templates
+    if (url.pathname === '/api/admin/invitations/templates' && req.method === 'GET') {
+      return json(res, 200, { templates: INVITATION_TEMPLATES })
+    }
+
+    // 18. Invitations: List all invitations and stats
+    if (url.pathname === '/api/admin/invitations' && req.method === 'GET') {
+      const rows = db.prepare('SELECT * FROM invitations ORDER BY created_at DESC').all()
+      const total = rows.length
+      const delivered = rows.filter((r) => r.status === 'delivered').length
+      const sent = rows.filter((r) => r.status === 'sent').length
+      const pending = rows.filter((r) => r.status === 'pending').length
+      const failed = rows.filter((r) => r.status === 'failed').length
+      return json(res, 200, {
+        invitations: rows.map(publicInvitation),
+        stats: { total, delivered, sent, pending, failed },
+      })
+    }
+
+    // 19. Invitations: Render live preview
+    if (url.pathname === '/api/admin/invitations/preview' && req.method === 'POST') {
+      const input = await readJsonBody(req, 100 * 1024)
+      const rendered = renderInvitationEmail({
+        recipientName: input?.recipientName,
+        designation: input?.designation,
+        institution: input?.institution,
+        category: input?.category,
+        templateKey: input?.templateKey,
+        subject: input?.subject,
+        message: input?.message,
+        event: { ...EVENT_DETAILS, logoUrl: '/assets/kgrcet-logo.png' },
+      })
+      return json(res, 200, rendered)
+    }
+
+    // 19b. Invitations: Serve HTML preview directly for opening in a new tab
+    const invitePreviewMatch = /^\/api\/admin\/invitations\/([a-zA-Z0-9_-]{1,64})\/preview$/.exec(url.pathname)
+    if (invitePreviewMatch && req.method === 'GET') {
+      const id = invitePreviewMatch[1]
+      const existing = db.prepare('SELECT * FROM invitations WHERE id = ?').get(id)
+      if (!existing) return error(res, 404, 'invitation not found')
+
+      const rendered = renderInvitationEmail({
+        recipientName: existing.recipient_name,
+        designation: existing.designation,
+        institution: existing.institution,
+        category: existing.category,
+        templateKey: existing.template_key,
+        subject: existing.subject,
+        message: existing.message,
+        event: { ...EVENT_DETAILS, logoUrl: '/assets/kgrcet-logo.png' },
+      })
+
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store, max-age=0',
+      })
+      res.end(rendered.html)
+      return
+    }
+
+    // 20. Invitations: Create & dispatch (or send test)
+    if (url.pathname === '/api/admin/invitations' && req.method === 'POST') {
+      const input = await readJsonBody(req, 100 * 1024)
+      const now = Date.now()
+      const isTest = Boolean(input?.isTest)
+      const recipientName = sanitizeInputText(input?.recipientName || 'Sir / Madam', 120)
+      const designation = sanitizeInputText(input?.designation || 'Academic Dignitary', 120)
+      const institution = sanitizeInputText(input?.institution || 'KG Reddy College of Engineering & Technology', 200)
+      const category = sanitizeInputText(input?.category || 'Internal College', 50)
+      const templateKey = sanitizeInputText(input?.templateKey || 'internal', 50)
+      const customSubject = input?.subject ? sanitizeInputText(input.subject, 200) : undefined
+      const customMessage = input?.message ? String(input.message).slice(0, 5000) : undefined
+
+      // Case 1: Send test email to current admin
+      if (isTest) {
+        const testTarget = admin.email
+        if (!isValidEmail(testTarget)) {
+          return error(res, 400, 'Invalid admin email address for test email')
+        }
+        const rendered = renderInvitationEmail({
+          recipientName: recipientName || admin.name,
+          designation,
+          institution,
+          category,
+          templateKey,
+          subject: customSubject ? `[TEST] ${customSubject}` : undefined,
+          message: customMessage,
+        })
+        try {
+          await mailer.sendMail({
+            from: mailer.from,
+            to: testTarget,
+            subject: rendered.subject.startsWith('[TEST]') ? rendered.subject : `[TEST] ${rendered.subject}`,
+            html: rendered.html,
+            text: rendered.text,
+          })
+          recordAuditLog({
+            ip: clientIp(req),
+            email: admin.email,
+            result: `test_invitation_dispatched:${testTarget}`,
+            userAgent: req.headers['user-agent'],
+          })
+          return json(res, 200, { ok: true, isTest: true, sentTo: testTarget })
+        } catch (err) {
+          return error(res, 500, `Failed to dispatch test email: ${sanitizeErrorMessage(err)}`)
+        }
+      }
+
+      // Case 2: Send actual invitation to one or more recipients
+      const rawEmails = String(input?.email || input?.emails || '')
+      const emailList = Array.from(
+        new Set(
+          rawEmails
+            .split(/[\n,;]+/)
+            .map((e) => e.trim().toLowerCase())
+            .filter((e) => e.length > 0)
+        )
+      )
+
+      if (emailList.length === 0) {
+        return error(res, 400, 'At least one recipient email address is required.')
+      }
+
+      const invalidEmails = emailList.filter((e) => !isValidEmail(e))
+      if (invalidEmails.length > 0) {
+        return error(res, 400, `Invalid email address(es): ${invalidEmails.slice(0, 3).join(', ')}`)
+      }
+
+      // Confirmation required before sending to multiple recipients
+      if (emailList.length > 1 && !input?.confirmMultiple) {
+        return json(res, 400, {
+          requireConfirmation: true,
+          count: emailList.length,
+          message: `Sending to ${emailList.length} recipients requires explicit confirmation.`,
+        })
+      }
+
+      // Duplicate protection: warn if already invited
+      const existing = db.prepare(`SELECT email, created_at, status FROM invitations WHERE LOWER(email) IN (${emailList.map(() => '?').join(',')})`).all(...emailList)
+      if (existing.length > 0 && !input?.allowDuplicate) {
+        return json(res, 409, {
+          warning: 'duplicate',
+          duplicates: existing,
+          message: `Duplicate warning: ${existing.length} recipient(s) already received an invitation (${existing.map((e) => e.email).slice(0, 3).join(', ')}).`,
+        })
+      }
+
+      const results = []
+      const insertStmt = db.prepare(`
+        INSERT INTO invitations (id, recipient_name, email, institution, designation, category, template_key, subject, message, status, sent_by, created_at, sent_at, last_error)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+
+      for (const targetEmail of emailList) {
+        const id = randomBytes(16).toString('hex')
+        const rendered = renderInvitationEmail({
+          recipientName,
+          designation,
+          institution,
+          category,
+          templateKey,
+          subject: customSubject,
+          message: customMessage,
+        })
+
+        let status = 'sent'
+        let lastError = null
+        try {
+          await mailer.sendMail({
+            from: mailer.from,
+            to: targetEmail,
+            subject: rendered.subject,
+            html: rendered.html,
+            text: rendered.text,
+          })
+        } catch (err) {
+          status = 'failed'
+          lastError = sanitizeErrorMessage(err)
+        }
+
+        insertStmt.run(
+          id,
+          recipientName,
+          targetEmail,
+          institution,
+          designation,
+          category,
+          templateKey,
+          rendered.subject,
+          customMessage || rendered.text,
+          status,
+          `${admin.name} (${admin.email})`,
+          now,
+          now,
+          lastError
+        )
+
+        recordAuditLog({
+          ip: clientIp(req),
+          email: admin.email,
+          result: `invitation_sent:${targetEmail} status:${status} by:${admin.email}`,
+          userAgent: req.headers['user-agent'],
+        })
+
+        results.push({ id, email: targetEmail, status, lastError })
+      }
+
+      notifyAdminClients('invitations_updated')
+      return json(res, 201, {
+        ok: true,
+        sentCount: results.filter((r) => r.status === 'sent').length,
+        failedCount: results.filter((r) => r.status === 'failed').length,
+        results,
+      })
+    }
+
+    // 21. Invitations: Resend
+    const invitationResendMatch = /^\/api\/admin\/invitations\/([a-zA-Z0-9_-]{1,64})\/resend$/.exec(url.pathname)
+    if (invitationResendMatch && req.method === 'POST') {
+      const id = invitationResendMatch[1]
+      const existing = db.prepare('SELECT * FROM invitations WHERE id = ?').get(id)
+      if (!existing) return error(res, 404, 'invitation not found')
+
+      const rendered = renderInvitationEmail({
+        recipientName: existing.recipient_name,
+        designation: existing.designation,
+        institution: existing.institution,
+        category: existing.category,
+        templateKey: existing.template_key,
+        subject: existing.subject,
+        message: existing.message,
+        event: { ...EVENT_DETAILS, logoUrl: '/assets/kgrcet-logo.png' },
+      })
+
+      const now = Date.now()
+      let status = 'sent'
+      let lastError = null
+      try {
+        await mailer.sendMail({
+          from: mailer.from,
+          to: existing.email,
+          subject: rendered.subject,
+          html: rendered.html,
+          text: rendered.text,
+        })
+      } catch (err) {
+        status = 'failed'
+        lastError = sanitizeErrorMessage(err)
+      }
+
+      db.prepare(`
+        UPDATE invitations
+        SET status = ?, sent_at = ?, sent_by = ?, last_error = ?
+        WHERE id = ?
+      `).run(status, now, `${admin.name} (${admin.email})`, lastError, id)
+
+      recordAuditLog({
+        ip: clientIp(req),
+        email: admin.email,
+        result: `invitation_resent:${existing.email} status:${status} by:${admin.email}`,
+        userAgent: req.headers['user-agent'],
+      })
+
+      notifyAdminClients('invitations_updated')
+      const updated = db.prepare('SELECT * FROM invitations WHERE id = ?').get(id)
+      return json(res, 200, { ok: true, invitation: publicInvitation(updated) })
+    }
+
+    // 22. Invitations: Update delivery status
+    const invitationStatusMatch = /^\/api\/admin\/invitations\/([a-zA-Z0-9_-]{1,64})\/status$/.exec(url.pathname)
+    if (invitationStatusMatch && (req.method === 'PATCH' || req.method === 'PUT')) {
+      const id = invitationStatusMatch[1]
+      const existing = db.prepare('SELECT * FROM invitations WHERE id = ?').get(id)
+      if (!existing) return error(res, 404, 'invitation not found')
+
+      const input = await readJsonBody(req, 4 * 1024)
+      const allowedStatuses = ['delivered', 'sent', 'pending', 'failed']
+      if (!allowedStatuses.includes(input?.status)) {
+        return error(res, 400, 'Invalid status value.')
+      }
+
+      db.prepare('UPDATE invitations SET status = ? WHERE id = ?').run(input.status, id)
+      recordAuditLog({
+        ip: clientIp(req),
+        email: admin.email,
+        result: `invitation_status_change:${id} to:${input.status} by:${admin.email}`,
+        userAgent: req.headers['user-agent'],
+      })
+
+      notifyAdminClients('invitations_updated')
+      return json(res, 200, { ok: true })
+    }
+
+    // 23. Invitations: Delete
+    const invitationDeleteMatch = /^\/api\/admin\/invitations\/([a-zA-Z0-9_-]{1,64})$/.exec(url.pathname)
+    if (invitationDeleteMatch && req.method === 'DELETE') {
+      const id = invitationDeleteMatch[1]
+      db.prepare('DELETE FROM invitations WHERE id = ?').run(id)
+      recordAuditLog({
+        ip: clientIp(req),
+        email: admin.email,
+        result: `invitation_deleted:${id} by:${admin.email}`,
+        userAgent: req.headers['user-agent'],
+      })
+      notifyAdminClients('invitations_updated')
+      return json(res, 200, { ok: true })
+    }
+
     return error(res, 404, 'not found')
   }
 
@@ -1436,7 +1791,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         }
 
         if (req.method !== 'GET' && !isSameOrigin(req, secure)) return error(res, 403, 'same-origin request required')
-        if (!['GET', 'PUT', 'POST', 'DELETE'].includes(req.method)) return error(res, 405, 'method not allowed')
+        if (!['GET', 'PUT', 'POST', 'DELETE', 'PATCH'].includes(req.method)) return error(res, 405, 'method not allowed')
         if (url.pathname.startsWith('/api/admin/')) return await adminApi(req, res, url)
 
         // Public Problem Statements API
@@ -1543,6 +1898,37 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       const pathSegments = url.pathname.split('/')
       if (pathSegments.some((seg) => seg.startsWith('.') && seg !== '.' && seg !== '..' && seg !== '.well-known')) {
         return error(res, 404, 'not found')
+      }
+
+      // Direct routes for email previews
+      if (url.pathname === '/invitation-email-preview.html' || url.pathname === '/invitation-preview' || url.pathname === '/invite-preview') {
+        const previewCandidates = [
+          resolve(root, 'dist', 'invitation-email-preview.html'),
+          resolve(root, 'public', 'invitation-email-preview.html'),
+          resolve(root, 'invitation-email-preview.html'),
+        ]
+        for (const candidate of previewCandidates) {
+          try {
+            const content = await readFile(candidate)
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+            return res.end(content)
+          } catch {}
+        }
+      }
+
+      if (url.pathname === '/email-preview.html' || url.pathname === '/email-preview') {
+        const previewCandidates = [
+          resolve(root, 'dist', 'email-preview.html'),
+          resolve(root, 'public', 'email-preview.html'),
+          resolve(root, 'email-preview.html'),
+        ]
+        for (const candidate of previewCandidates) {
+          try {
+            const content = await readFile(candidate)
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+            return res.end(content)
+          } catch {}
+        }
       }
 
       const distDir = resolve(root, 'dist')

@@ -340,7 +340,9 @@ function App() {
   const pathname = window.location.pathname.replace(/\/+$/, '')
   const isRegistration = pathname === '/register'
   const isAdmin = pathname === '/admin' || pathname === '/admin/login' || pathname.startsWith('/admin/')
-  const isSubpage = isRegistration || isAdmin
+  const isInvitePreview = pathname === '/invitation-preview' || pathname === '/invite-preview' || pathname === '/invitation-email-preview' || pathname === '/invitation-email-preview.html'
+  const isEmailPreview = pathname === '/email-preview' || pathname === '/email-preview.html'
+  const isSubpage = isRegistration || isAdmin || isInvitePreview || isEmailPreview
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const [realm, setRealm] = useState<'void' | 'world'>(isSubpage ? 'world' : 'void')
@@ -561,7 +563,28 @@ function App() {
         )}
       </AnimatePresence>
 
-      {isAdmin ? <Admin /> : isRegistration ? <Registration /> : <main id="top">
+      {isAdmin ? (
+        <Admin />
+      ) : isRegistration ? (
+        <Registration />
+      ) : isInvitePreview ? (
+        <div style={{ width: '100%', minHeight: '100vh', paddingTop: 'var(--header-height)', display: 'flex', flexDirection: 'column' }}>
+          <iframe
+            src="/invitation-email-preview.html"
+            title="Official Invitation Email Preview"
+            style={{ width: '100%', height: 'calc(100vh - var(--header-height))', border: 'none', background: '#07060a' }}
+          />
+        </div>
+      ) : isEmailPreview ? (
+        <div style={{ width: '100%', minHeight: '100vh', paddingTop: 'var(--header-height)', display: 'flex', flexDirection: 'column' }}>
+          <iframe
+            src="/email-preview.html"
+            title="Registration Confirmation Email Preview"
+            style={{ width: '100%', height: 'calc(100vh - var(--header-height))', border: 'none', background: '#07060a' }}
+          />
+        </div>
+      ) : (
+        <main id="top">
         {/* =================================================================
             HERO SECTION
             ================================================================= */}
@@ -950,7 +973,8 @@ function App() {
             </div>
           </div>
         </section>
-      </main>}
+      </main>
+      )}
 
       {/* =================================================================
           FOOTER
