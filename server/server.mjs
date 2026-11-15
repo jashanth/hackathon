@@ -443,7 +443,7 @@ function validateDraftShape(data) {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return 'data must be an object'
   const fields = ['teamName', 'teamSize', 'college', 'leadName', 'email', 'phone']
   if (fields.some((field) => typeof data[field] !== 'string' || data[field].length > 200)) return 'all team fields must be short strings'
-  for (const f of ['collegeCode', 'rollNumber', 'gender', 'year', 'courseName', 'foodPreference']) {
+  for (const f of ['collegeCode', 'rollNumber', 'gender', 'year', 'courseName', 'foodPreference', 'domain', 'track']) {
     if (data[f] !== undefined && (typeof data[f] !== 'string' || data[f].length > 200)) return 'all team fields must be short strings'
   }
   if (!Array.isArray(data.members)) return 'members must be an array'
@@ -460,6 +460,7 @@ function validateDraftShape(data) {
   const stringsToCheck = [
     data.teamName, data.college, data.leadName,
     data.collegeCode, data.rollNumber, data.gender, data.year, data.courseName, data.foodPreference,
+    data.domain, data.track,
   ]
   for (const member of data.members) {
     if (member && typeof member === 'object') {
@@ -518,9 +519,10 @@ function cleanRegistration(data) {
     phone: (data.phone || '').replace(/[\s().-]/g, ''),
     members: data.members.map(member),
   }
-  for (const key of ['collegeCode', 'rollNumber', 'gender', 'year', 'courseName', 'foodPreference']) {
+  for (const key of ['collegeCode', 'rollNumber', 'gender', 'year', 'courseName', 'foodPreference', 'domain', 'track']) {
     if (data[key] !== undefined) cleaned[key] = text(data[key])
   }
+  if (!cleaned.domain && data.track) cleaned.domain = text(data.track)
   return cleaned
 }
 
@@ -1041,6 +1043,54 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         registrationOpen: isRegistrationOpen(),
         problemStatementsReleased: isProblemStatementsReleased(),
       })
+    }
+
+    // 9a. Export registrations as CSV
+    if ((url.pathname === '/api/admin/registrations.csv' || url.pathname === '/api/admin/registrations/export.csv') && req.method === 'GET') {
+      const all = allRegistrations()
+      const methodLabels = { upi: 'UPI', cash: 'Cash' }
+      const statusLabels = { pending: 'Pending', valid: 'Valid', invalid: 'Invalid' }
+      const rows = [
+        ['Receipt', 'Team', 'Domain', 'Team Size', 'Role', 'Name', 'Email', 'Phone', 'Roll Number', 'Gender', 'Year', 'College', 'College Code', 'Course', 'Food Preference', 'Amount (INR)', 'Payment Method', 'UTR', 'Screenshot', 'Status', 'Email Status', 'Emails Sent', 'Emails Failed', 'Last Email Attempt', 'Reviewed By', 'Source', 'Submitted At']
+      ]
+      for (const row of all) {
+        const reg = publicRegistration(row)
+        const d = reg.data || {}
+        const domain = d.domain || d.track || ''
+        const members = Array.isArray(d.members) ? d.members : []
+        const peopleCount = members.length + 1
+        const person = (role, m, name) => [
+          reg.receipt, d.teamName || '', domain, String(peopleCount), role, name || '', m.email || '', m.phone || '', m.rollNumber || '', m.gender || '',
+          m.year || '', m.college || '', m.collegeCode || '', m.courseName || '', m.foodPreference || '',
+        ]
+        rows.push([
+          ...person('Leader', d, d.leadName),
+          String(reg.amount), methodLabels[reg.paymentMethod] || reg.paymentMethod, reg.utrNumber || '', reg.hasPaymentProof ? 'Yes' : 'No',
+          statusLabels[reg.reviewStatus] || reg.reviewStatus,
+          reg.emailStatus ? reg.emailStatus.toUpperCase() : (reg.reviewStatus === 'valid' ? 'QUEUED' : 'NOT APPLICABLE'),
+          String(reg.emailSentCount ?? 0),
+          String(reg.emailFailedCount ?? 0),
+          reg.emailLastAttemptAt ? new Date(reg.emailLastAttemptAt).toISOString() : '',
+          reg.reviewedBy || '', reg.source, reg.submittedAt ? new Date(reg.submittedAt).toISOString() : '',
+        ])
+        for (const m of members) {
+          rows.push([...person('Member', m, m.name), '', '', '', '', statusLabels[reg.reviewStatus] || reg.reviewStatus, '', '', '', '', '', reg.source, ''])
+        }
+      }
+      const csvCell = (val) => {
+        const str = String(val ?? '')
+        const safe = /^[=+\-@\t\r|%]/.test(str) ? `'${str}` : str
+        return `"${safe.replace(/"/g, '""')}"`
+      }
+      const csvContent = '\uFEFF' + rows.map((r) => r.map(csvCell).join(',')).join('\r\n')
+
+      res.writeHead(200, {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="kgrcet-hackathon-registrations.csv"',
+        'Cache-Control': 'no-store, max-age=0',
+      })
+      res.end(csvContent)
+      return
     }
 
     // 9. Spot registration

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import QRCode from 'qrcode'
+import { tracks } from './config/event'
 import { payment, upiLink } from './config/payment'
 import { processScreenshotFile } from './image'
 import './registration.css'
@@ -21,6 +22,7 @@ export type Member = {
 export type Data = {
   teamName: string
   teamSize: string
+  domain: string
   leadName: string
   email: string
   phone: string
@@ -41,6 +43,7 @@ type Reply = { draft: Draft; rules?: Rules; error?: string }
 const steps = ['Team details', 'Members', 'Payment and Review']
 const rupees = (amount: number) => `₹${amount.toLocaleString('en-IN')}`
 
+const domainOptions = tracks.map((t) => t.title)
 const teamSizeOptions = ['2', '3', '4'] as const
 const genderOptions = ['Male', 'Female', 'Other'] as const
 const yearOptions = ['1st Year', '2nd Year', '3rd Year', '4th Year'] as const
@@ -129,6 +132,10 @@ function validate(data: Data, rules: Rules, members: boolean) {
     errors.teamName = 'Team name is required.'
   } else if (data.teamName.length > 200) {
     errors.teamName = 'Use 200 characters or fewer.'
+  }
+
+  if (!data.domain || !data.domain.trim()) {
+    errors.domain = 'Please select a challenge domain.'
   }
 
   const size = Number(data.teamSize)
@@ -244,9 +251,13 @@ export default function Registration() {
         if (controller.signal.aborted) return
         if (!result.rules) throw new Error('The server did not return registration rules.')
         const raw = result.draft.data || ({} as Partial<Data>)
+        const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+        const urlDomain = urlParams?.get('domain') || urlParams?.get('track') || ''
+        const matchingDomain = domainOptions.find((d) => d.toLowerCase() === urlDomain.trim().toLowerCase()) || urlDomain
         const loadedData: Data = {
           teamName: raw.teamName || '',
           teamSize: raw.teamSize || '',
+          domain: raw.domain || (matchingDomain && domainOptions.includes(matchingDomain) ? matchingDomain : ''),
           leadName: raw.leadName || '',
           email: raw.email || '',
           phone: raw.phone || '',
@@ -645,7 +656,7 @@ export default function Registration() {
             {submitted ? (
               <section className="registration-panel">
                 <h2 tabIndex={-1} ref={heading} className="registration-confirmed-title">Payment under verification</h2>
-                <p>Your registration for <strong>{data.teamName}</strong> is recorded. The organizers will check your payment against the UTR and screenshot you sent, then confirm your team.</p>
+                <p>Your registration for <strong>{data.teamName}</strong>{data.domain ? <> (Domain: <strong>{data.domain}</strong>)</> : null} is recorded. The organizers will check your payment against the UTR and screenshot you sent, then confirm your team.</p>
                 <p>Save your receipt: <strong className="registration-receipt">{draft.receipt || 'Not provided by server'}</strong></p>
                 <a href="/" className="btn-secondary-luxury">Back to overview</a>
               </section>
@@ -673,24 +684,59 @@ export default function Registration() {
                   <legend className="registration-sr-only">{steps[draft.step]}</legend>
 
                   {draft.step === 0 && (
-                    <div className="form-grid registration-grid">
-                      {field('teamName', 'Team name', data.teamName, (val) => updateLeaderField('teamName', val), 'text', 'Enter team name')}
-                      {selectField('teamSize', 'Team size', data.teamSize, teamSizeOptions, handleTeamSizeChange, 'Select team size')}
+                    <div className="registration-sections">
+                      {/* 1. Team Information */}
+                      <section className="registration-form-section" aria-labelledby="section-team-info">
+                        <div className="registration-section-header">
+                          <span className="registration-section-num">1</span>
+                          <h3 id="section-team-info" className="registration-section-title">Team Information</h3>
+                        </div>
+                        <div className="form-grid registration-grid">
+                          {field('teamName', 'Team Name', data.teamName, (val) => updateLeaderField('teamName', val), 'text', 'Enter team name')}
+                          {selectField('domain', 'Challenge Domain / Track', data.domain, domainOptions, (val) => updateLeaderField('domain', val), 'Select challenge domain')}
+                          {selectField('teamSize', 'Team Size', data.teamSize, teamSizeOptions, handleTeamSizeChange, 'Select team size')}
+                        </div>
+                      </section>
 
-                      {field('leadName', 'Team Leader Full Name', data.leadName, (val) => updateLeaderField('leadName', val), 'text', 'Team leader full name', 'name')}
-                      {field('email', 'Email', data.email, (val) => updateLeaderField('email', val), 'email', 'name@example.com', 'email')}     
+                      {/* 2. Team Leader Information */}
+                      <section className="registration-form-section" aria-labelledby="section-leader-info">
+                        <div className="registration-section-header">
+                          <span className="registration-section-num">2</span>
+                          <h3 id="section-leader-info" className="registration-section-title">Team Leader Information</h3>
+                        </div>
+                        <div className="form-grid registration-grid">
+                          {field('leadName', 'Team Leader Full Name', data.leadName, (val) => updateLeaderField('leadName', val), 'text', 'Team leader full name', 'name')}
+                          {field('email', 'Email', data.email, (val) => updateLeaderField('email', val), 'email', 'name@example.com', 'email')}
+                          {field('phone', 'Phone Number', data.phone, (val) => updateLeaderField('phone', val), 'tel', 'Enter phone number', 'tel')}
+                          {selectField('gender', 'Gender', data.gender, genderOptions, (val) => updateLeaderField('gender', val), 'Select gender')}
+                        </div>
+                      </section>
 
-                      {field('phone', 'Phone number', data.phone, (val) => updateLeaderField('phone', val), 'tel', 'Enter phone number', 'tel')}
-                      {field('rollNumber', 'Roll number', data.rollNumber, (val) => updateLeaderField('rollNumber', val), 'text', 'Enter Your Roll number')}
+                      {/* 3. Academic Information */}
+                      <section className="registration-form-section" aria-labelledby="section-academic-info">
+                        <div className="registration-section-header">
+                          <span className="registration-section-num">3</span>
+                          <h3 id="section-academic-info" className="registration-section-title">Academic Information</h3>
+                        </div>
+                        <div className="form-grid registration-grid">
+                          {field('college', 'College Name', data.college, (val) => updateLeaderField('college', val), 'text', 'Full college name', 'organization')}
+                          {field('collegeCode', 'College Code', data.collegeCode, (val) => updateLeaderField('collegeCode', val), 'text', 'Enter college code')}
+                          {field('courseName', 'Course Name', data.courseName, (val) => updateLeaderField('courseName', val), 'text', 'Enter Your College Course Name', 'off', 'e.g. BTECH - CSE')}
+                          {selectField('year', 'Year', data.year, yearOptions, (val) => updateLeaderField('year', val), 'Select year')}
+                          {field('rollNumber', 'Roll Number', data.rollNumber, (val) => updateLeaderField('rollNumber', val), 'text', 'Enter Your Roll number')}
+                        </div>
+                      </section>
 
-                      {selectField('gender', 'Gender', data.gender, genderOptions, (val) => updateLeaderField('gender', val), 'Select gender')}
-                      {selectField('year', 'Year', data.year, yearOptions, (val) => updateLeaderField('year', val), 'Select year')}
-
-                      {field('college', 'College name', data.college, (val) => updateLeaderField('college', val), 'text', 'Full college name', 'organization')}
-                      {field('collegeCode', 'College code', data.collegeCode, (val) => updateLeaderField('collegeCode', val), 'text', 'Enter college code')}
-
-                      {field('courseName', 'Course name', data.courseName, (val) => updateLeaderField('courseName', val), 'text', 'Enter Your College Course Name', 'off', 'e.g. BTECH - CSE')}
-                      {selectField('foodPreference', 'Food preference', data.foodPreference, foodOptions, (val) => updateLeaderField('foodPreference', val), 'Select food preference')}
+                      {/* 4. Food Preference */}
+                      <section className="registration-form-section" aria-labelledby="section-food-info">
+                        <div className="registration-section-header">
+                          <span className="registration-section-num">4</span>
+                          <h3 id="section-food-info" className="registration-section-title">Food Preference</h3>
+                        </div>
+                        <div className="form-grid registration-grid">
+                          {selectField('foodPreference', 'Food Preference', data.foodPreference, foodOptions, (val) => updateLeaderField('foodPreference', val), 'Select food preference')}
+                        </div>
+                      </section>
                     </div>
                   )}
 
@@ -712,20 +758,20 @@ export default function Registration() {
                         <fieldset className="registration-member" key={index}>
                           <legend>Member {index + 2}</legend>
                           <div className="form-grid registration-grid">
-                            {field(`member-${index}-name`, 'Full name', member.name, (val) => updateMember(index, 'name', val), 'text', 'Member full name', 'name')}
+                            {field(`member-${index}-name`, 'Full Name', member.name, (val) => updateMember(index, 'name', val), 'text', 'Member full name', 'name')}
                             {field(`member-${index}-email`, 'Email', member.email, (val) => updateMember(index, 'email', val), 'email', 'name@example.com', 'email')}
 
-                            {field(`member-${index}-phone`, 'Phone number', member.phone, (val) => updateMember(index, 'phone', val), 'tel', 'Enter phone number', 'tel')}
-                            {field(`member-${index}-rollNumber`, 'Roll number', member.rollNumber, (val) => updateMember(index, 'rollNumber', val), 'text', 'e.g. 21K91A0502')}
-
+                            {field(`member-${index}-phone`, 'Phone Number', member.phone, (val) => updateMember(index, 'phone', val), 'tel', 'Enter phone number', 'tel')}
                             {selectField(`member-${index}-gender`, 'Gender', member.gender, genderOptions, (val) => updateMember(index, 'gender', val), 'Select gender')}
+
+                            {field(`member-${index}-college`, 'College Name', member.college, (val) => updateMember(index, 'college', val), 'text', 'Full college name', 'organization')}
+                            {field(`member-${index}-collegeCode`, 'College Code', member.collegeCode, (val) => updateMember(index, 'collegeCode', val), 'text', 'e.g. KGRH')}
+
+                            {field(`member-${index}-courseName`, 'Course Name', member.courseName, (val) => updateMember(index, 'courseName', val), 'text', 'BTECH - CSE', 'off', 'e.g. BTECH - CSE')}
                             {selectField(`member-${index}-year`, 'Year', member.year, yearOptions, (val) => updateMember(index, 'year', val), 'Select year')}
 
-                            {field(`member-${index}-college`, 'College name', member.college, (val) => updateMember(index, 'college', val), 'text', 'Full college name', 'organization')}
-                            {field(`member-${index}-collegeCode`, 'College code', member.collegeCode, (val) => updateMember(index, 'collegeCode', val), 'text', 'e.g. KGRH')}
-
-                            {field(`member-${index}-courseName`, 'Course name', member.courseName, (val) => updateMember(index, 'courseName', val), 'text', 'BTECH - CSE', 'off', 'e.g. BTECH - CSE')}
-                            {selectField(`member-${index}-foodPreference`, 'Food preference', member.foodPreference, foodOptions, (val) => updateMember(index, 'foodPreference', val), 'Select food preference')}
+                            {field(`member-${index}-rollNumber`, 'Roll Number', member.rollNumber, (val) => updateMember(index, 'rollNumber', val), 'text', 'e.g. 21K91A0502')}
+                            {selectField(`member-${index}-foodPreference`, 'Food Preference', member.foodPreference, foodOptions, (val) => updateMember(index, 'foodPreference', val), 'Select food preference')}
                           </div>
                         </fieldset>
                       ))}
@@ -742,6 +788,7 @@ export default function Registration() {
                       </div>
                       <dl>
                         <div><dt>Team name</dt><dd>{data.teamName}{errors.teamName && <span className="registration-error">{errors.teamName}</span>}</dd></div>
+                        <div><dt>Challenge domain</dt><dd>{data.domain || '—'}{errors.domain && <span className="registration-error">{errors.domain}</span>}</dd></div>
                         <div><dt>Team size</dt><dd>{data.teamSize}{errors.teamSize && <span className="registration-error">{errors.teamSize}</span>}</dd></div>
                         <div><dt>Leader full name</dt><dd>{data.leadName}{errors.leadName && <span className="registration-error">{errors.leadName}</span>}</dd></div>
                         <div><dt>Email</dt><dd>{data.email}{errors.email && <span className="registration-error">{errors.email}</span>}</dd></div>

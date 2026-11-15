@@ -779,8 +779,8 @@ function App() {
                 >
                   <div className="track-card-header">
                     <span className="track-num-badge">{track.number}</span>
-                    <span className="track-action-badge">
-                      Click for details <ArrowUpRight size={13} />
+                    <span className="track-status">
+                      Click for Details <ArrowUpRight size={12} />
                     </span>
                   </div>
 
@@ -1135,7 +1135,7 @@ function App() {
                   Close
                 </button>
                 {registrationOpen ? (
-                  <a href="/register" className="btn-primary-luxury">
+                  <a href={`/register?domain=${encodeURIComponent(selectedTrack.title)}`} className="btn-primary-luxury">
                     <span>Register for this Track</span>
                     <ArrowRight size={14} />
                   </a>

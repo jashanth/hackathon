@@ -237,6 +237,12 @@ export function renderMemberConfirmationEmail({ recipient, teamData, receipt, am
                         </td>
                       </tr>
 
+                      ${teamData.domain ? `<!-- Challenge Domain -->
+                      <tr>
+                        <td style="padding: 8px 0; font-family: 'Geist Mono', monospace; font-size: 11.5px; color: #94897c; letter-spacing: 0.5px; text-transform: uppercase; border-top: 1px solid #1c1524;">Challenge Track:</td>
+                        <td style="padding: 8px 0; font-family: 'Geist Mono', monospace; font-size: 12.5px; color: #dcb872; font-weight: 500; border-top: 1px solid #1c1524;">${escapeHtml(teamData.domain)}</td>
+                      </tr>` : ''}
+
                       <!-- Amount Paid -->
                       <tr>
                         <td style="padding: 8px 0; font-family: 'Geist Mono', monospace; font-size: 11.5px; color: #94897c; letter-spacing: 0.5px; text-transform: uppercase; border-top: 1px solid #1c1524;">Registration Fee:</td>

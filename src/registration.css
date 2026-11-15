@@ -20,6 +20,14 @@
 .registration h2:focus,
 .registration h2:focus-visible { outline: none; box-shadow: none; }
 .registration-fields { padding: 0; margin: 0; border: 0; min-width: 0; }
+.registration-sections { display: flex; flex-direction: column; gap: 32px; }
+.registration-form-section { display: flex; flex-direction: column; gap: 16px; }
+.registration-form-section:not(:first-child) { padding-top: 26px; border-top: 1px solid var(--line); }
+.registration-section-header { display: flex; align-items: center; gap: 10px; }
+.registration-section-num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(212, 175, 55, 0.12); border: 1px solid var(--gold); color: var(--gold); font: 600 11.5px/1 var(--font-mono); flex-shrink: 0; }
+.registration-section-title { margin: 0; font: 500 17px/1.2 var(--font-display); color: var(--ink); letter-spacing: .02em; }
+.registration-form-section .form-grid { margin-top: 0; }
+[data-theme='light'] .registration-section-num { background: rgba(180, 130, 20, 0.12); border-color: #b48214; color: #b48214; }
 .registration-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
 .registration .form-group { min-width: 0; align-content: start; }
 .registration .form-input { font-size: 16px; }

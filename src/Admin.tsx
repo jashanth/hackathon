@@ -23,6 +23,7 @@ type Member = {
 type TeamData = {
   teamName: string
   teamSize: string
+  domain?: string
   leadName: string
   email: string
   phone: string
@@ -78,6 +79,7 @@ type Tab = 'registrations' | 'spot' | 'counts' | 'problem-statements'
 const statusLabels: Record<ReviewStatus, string> = { pending: 'Pending', valid: 'Valid', invalid: 'Invalid' }
 const methodLabels: Record<PaymentMethod, string> = { upi: 'UPI', cash: 'Cash' }
 const choices: Record<string, readonly string[]> = {
+  domain: tracks.map((t) => t.title),
   gender: ['Male', 'Female', 'Other'],
   year: ['1st Year', '2nd Year', '3rd Year', '4th Year'],
   foodPreference: ['VEG', 'NON VEG'],
@@ -85,6 +87,7 @@ const choices: Record<string, readonly string[]> = {
 const blankTeam = (): TeamData => ({
   teamName: '',
   teamSize: '',
+  domain: tracks[0]?.title || '',
   leadName: '',
   email: '',
   phone: '',
@@ -138,11 +141,12 @@ function csvCell(value: string) {
 }
 
 function downloadCsv(registrations: AdminRegistration[]) {
-  const rows = [['Receipt', 'Team', 'Team Size', 'Role', 'Name', 'Email', 'Phone', 'Roll Number', 'Gender', 'Year', 'College', 'College Code', 'Course', 'Food Preference', 'Amount (INR)', 'Payment Method', 'UTR', 'Screenshot', 'Status', 'Email Status', 'Emails Sent', 'Emails Failed', 'Last Email Attempt', 'Reviewed By', 'Source', 'Submitted At']]
+  const rows = [['Receipt', 'Team', 'Domain', 'Team Size', 'Role', 'Name', 'Email', 'Phone', 'Roll Number', 'Gender', 'Year', 'College', 'College Code', 'Course', 'Food Preference', 'Amount (INR)', 'Payment Method', 'UTR', 'Screenshot', 'Status', 'Email Status', 'Emails Sent', 'Emails Failed', 'Last Email Attempt', 'Reviewed By', 'Source', 'Submitted At']]
   for (const registration of registrations) {
     const { receipt, data, reviewStatus, source } = registration
+    const domain = data.domain || ''
     const person = (role: string, member: Member | TeamData, name: string) => [
-      receipt, data.teamName, String(peopleIn(registration)), role, name, member.email, member.phone || '', member.rollNumber || '', member.gender || '',
+      receipt, data.teamName, domain, String(peopleIn(registration)), role, name, member.email, member.phone || '', member.rollNumber || '', member.gender || '',
       member.year || '', member.college, member.collegeCode || '', member.courseName || '', member.foodPreference || '',
     ]
     // Payment and email columns sit on the leader's row only, so summing the amount column gives the real total.
@@ -293,7 +297,7 @@ function Control({ id, label, value, onChange, type = 'text', required = false }
 }
 
 const leaderFields: [keyof Omit<TeamData, 'members' | 'teamSize'>, string, string?][] = [
-  ['teamName', 'Team name'], ['leadName', 'Team leader name'], ['email', 'Leader email', 'email'], ['phone', 'Leader phone', 'tel'],
+  ['teamName', 'Team name'], ['domain', 'Challenge Domain'], ['leadName', 'Team leader name'], ['email', 'Leader email', 'email'], ['phone', 'Leader phone', 'tel'],
   ['rollNumber', 'Roll number'], ['gender', 'Gender'], ['year', 'Year'], ['college', 'College / institution'],
   ['collegeCode', 'College code'], ['courseName', 'Course'], ['foodPreference', 'Food preference'],
 ]
@@ -301,7 +305,7 @@ const memberFields: [keyof Member, string, string?][] = [
   ['name', 'Full name'], ['email', 'Email', 'email'], ['phone', 'Phone', 'tel'], ['rollNumber', 'Roll number'], ['gender', 'Gender'],
   ['year', 'Year'], ['college', 'College / institution'], ['collegeCode', 'College code'], ['courseName', 'Course'], ['foodPreference', 'Food preference'],
 ]
-const requiredLeader = new Set(['teamName', 'leadName', 'email', 'phone', 'college'])
+const requiredLeader = new Set(['teamName', 'domain', 'leadName', 'email', 'phone', 'college'])
 const requiredMember = new Set(['name', 'email', 'college'])
 
 /** The form behind both Spot Registration and Edit. Team size and fee follow the people listed. */
@@ -890,7 +894,7 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
     const filtered = registrations.filter((registration) => {
       const { receipt, data, reviewStatus, source, paymentMethod, utrNumber } = registration
       // Search looks through every registration, ignoring the dropdown filters.
-      if (term) return [receipt, data.teamName, data.leadName, data.email, data.phone, data.college, utrNumber || '', ...data.members.flatMap((member) => [member.name, member.email])].some((field) => field.toLowerCase().includes(term))
+      if (term) return [receipt, data.teamName, data.domain || '', data.leadName, data.email, data.phone, data.college, utrNumber || '', ...data.members.flatMap((member) => [member.name, member.email])].some((field) => field.toLowerCase().includes(term))
       return (statusFilter === 'all' || reviewStatus === statusFilter) &&
         (sourceFilter === 'all' || source === sourceFilter) &&
         (methodFilter === 'all' || paymentMethod === methodFilter) &&
@@ -1378,7 +1382,7 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
                             <strong>{data.teamName}</strong>
                             <ChevronDown size={14} />
                           </button>
-                          <small>{peopleIn(registration)} {peopleIn(registration) === 1 ? 'person' : 'people'}</small>
+                          <small>{peopleIn(registration)} {peopleIn(registration) === 1 ? 'person' : 'people'}{data.domain ? ` • ${data.domain}` : ''}</small>
                           {open && (
                             <ul className="admin-members">
                               {data.members.map((member, index) => <li key={index}><b>{member.name}</b><span>{member.email}{member.phone ? ` · ${member.phone}` : ''}</span><span>{[member.college, member.year, member.courseName].filter(Boolean).join(' · ')}</span></li>)}

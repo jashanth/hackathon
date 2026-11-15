@@ -417,9 +417,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .track-card:hover::before { transform: scaleX(1); }
 .track-card-header { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 4px; }
 .track-num-badge { color: var(--gold); font: 400 13px var(--font-mono); letter-spacing: .08em; }
-.track-action-badge { display: inline-flex; align-items: center; gap: 4px; color: var(--gold); font: 500 11px/1 var(--font-mono); letter-spacing: .08em; padding: 4px 10px; border-radius: 999px; background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.28); transition: all .3s ease; }
-.track-card:hover .track-action-badge { background: rgba(212, 175, 55, 0.22); border-color: var(--gold); color: #fff; transform: translateX(3px); }
-.track-status { color: var(--ink-faint); font: 400 11px var(--font-mono); letter-spacing: .1em; }
+.track-status { color: var(--gold); font: 500 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; display: inline-flex; align-items: center; gap: 4px; transition: all .3s ease; }
+.track-card:hover .track-status { color: var(--gold-bright); transform: translateX(2px); }
 .track-title { margin: 0; font: 300 clamp(27px, 3vw, 44px)/1.1 var(--font-display); transition: color .4s ease; }
 .track-card:hover .track-title { color: var(--gold); font-style: italic; }
 

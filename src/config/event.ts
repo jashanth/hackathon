@@ -67,7 +67,7 @@ export const tracks: Track[] = [
     title: 'Generative AI & Automation',
     description: 'Participants build practical software tools that go beyond basic chat interfaces to automate complex, multi-step workflows.',
     focusAreas: 'Multi-agent systems, enterprise productivity, automated code review, and localized language assistants.',
-    status: 'ACTIVE DOMAIN',
+    status: 'Click for Details',
   },
   {
     id: 'cybersecurity-digital-forensics',
@@ -75,7 +75,7 @@ export const tracks: Track[] = [
     title: 'Cybersecurity & Digital Forensics',
     description: 'Participants build proactive defense tools and investigative software that protect sensitive data, detect active threats, and uncover digital footprints.',
     focusAreas: 'Threat intelligence, phishing detection, automated log analysis, privacy-preserving cryptography, and incident response workflows.',
-    status: 'ACTIVE DOMAIN',
+    status: 'Click for Details',
   },
   {
     id: 'fintech-blockchain',
@@ -83,7 +83,7 @@ export const tracks: Track[] = [
     title: 'FinTech & Blockchain',
     description: 'Participants build accessible financial applications and decentralized protocols that streamline payments, automate wealth management, and establish trustless digital ecosystems.',
     focusAreas: 'Smart contract security, decentralized identity, micro-lending platforms, cross-border payment rails, and automated personal finance tools.',
-    status: 'ACTIVE DOMAIN',
+    status: 'Click for Details',
   },
   {
     id: 'healthtech-mental-wellbeing',
@@ -91,7 +91,7 @@ export const tracks: Track[] = [
     title: 'HealthTech & Mental Well-being',
     description: 'Participants build accessible digital health platforms and supportive software tools that improve patient care, simplify medical workflows, and promote daily mental wellness.',
     focusAreas: 'Telemedicine interfaces, symptom triage systems, cognitive behavioral therapy tools, accessible UI/UX for users with disabilities, and preventative health tracking.',
-    status: 'ACTIVE DOMAIN',
+    status: 'Click for Details',
   },
   {
     id: 'open-innovation',
@@ -99,7 +99,7 @@ export const tracks: Track[] = [
     title: 'Open Innovation (Open Track)',
     description: 'Any idea that solves a real problem, in any field. No good idea gets turned away.',
     focusAreas: 'Developer tools, EdTech platforms, creator economy software, sustainable tech, and experimental web applications.',
-    status: 'OPEN TRACK',
+    status: 'Click for Details',
   },
 ]
 

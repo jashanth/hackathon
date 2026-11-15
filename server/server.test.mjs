@@ -967,3 +967,18 @@ test('admin can toggle registration status with password confirmation and releas
   assert.equal(publicCheck3.body.registrationOpen, true)
 })
 
+test('domain is recorded in registration and exported in admin CSV', async (t) => {
+  const f = await adminFixture(t)
+  const cookie = await f.login()
+  const utrNumber = newUtr()
+  const teamData = { ...complete(), domain: 'Cybersecurity & Digital Forensics' }
+  const spot = (await f.call('POST', '/api/admin/registrations', { data: teamData, paymentMethod: 'upi', utrNumber, screenshotDataUrl: screenshot }, cookie)).body.registration
+  assert.equal(spot.data.domain, 'Cybersecurity & Digital Forensics')
+
+  const csvResponse = await f.call('GET', '/api/admin/registrations.csv', undefined, cookie)
+  assert.equal(csvResponse.status, 200)
+  assert.equal(csvResponse.headers.get('content-type'), 'text/csv; charset=utf-8')
+  assert.match(csvResponse.body, /"Domain"/)
+  assert.match(csvResponse.body, /"Cybersecurity & Digital Forensics"/)
+})
+
