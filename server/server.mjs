@@ -1521,7 +1521,6 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
             to: `"${sanitizeHeader(recipientName || admin.name || 'Invited Dignitary')}" <${testTarget}>`,
             replyTo: EVENT_DETAILS.contactEmail || 'cseh@kgrcet.edu.in',
             subject: rendered.subject.startsWith('[TEST]') ? rendered.subject : `[TEST] ${rendered.subject}`,
-            html: rendered.html,
             text: rendered.text,
             headers: {
               'X-Priority': '1',
@@ -1605,7 +1604,6 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
             to: `"${sanitizeHeader(recipientName || 'Invited Dignitary')}" <${targetEmail}>`,
             replyTo: EVENT_DETAILS.contactEmail || 'cseh@kgrcet.edu.in',
             subject: rendered.subject,
-            html: rendered.html,
             text: rendered.text,
             headers: {
               'X-Priority': '1',
@@ -1680,7 +1678,6 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
           to: `"${sanitizeHeader(existing.recipient_name || 'Invited Dignitary')}" <${existing.email}>`,
           replyTo: EVENT_DETAILS.contactEmail || 'cseh@kgrcet.edu.in',
           subject: rendered.subject,
-          html: rendered.html,
           text: rendered.text,
           headers: {
             'X-Priority': '1',

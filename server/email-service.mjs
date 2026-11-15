@@ -117,7 +117,7 @@ export function renderMemberConfirmationEmail({ recipient, teamData, receipt, am
 
   const subject = `Registration Verified: Team ${safeTeam} — ${event.name} (${safeReceipt})`
 
-  const html = `
+  const richHtml = `
 <!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
@@ -363,7 +363,69 @@ Organized by ${event.organizer}
 ==================================================
   `.trim()
 
-  return { subject, html, text }
+  const plainHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(subject)}</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 32px 16px;
+      background-color: #07060a;
+      color: #f5efe3;
+      font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+      -webkit-font-smoothing: antialiased;
+      display: flex;
+      justify-content: center;
+    }
+    .preview-card {
+      max-width: 660px;
+      width: 100%;
+      background-color: #0e0b13;
+      border: 1px solid #332718;
+      border-radius: 4px;
+      padding: 32px 28px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85);
+    }
+    .preview-badge {
+      font-size: 11px;
+      color: #dcb872;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      padding-bottom: 12px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #231b26;
+      font-weight: 600;
+    }
+    .preview-body {
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 13.5px;
+      line-height: 1.65;
+      color: #f5efe3;
+      margin: 0;
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body>
+  <div class="preview-card">
+    <div class="preview-badge">
+      ✦ OFFICIAL INVITATION (PLAIN-TEXT FORMAT)
+    </div>
+    <pre class="preview-body">${escapeHtml(text)}</pre>
+  </div>
+</body>
+</html>`.trim()
+
+  return { subject, html: plainHtml, text, richHtml }
+}
+
+export function renderRichInvitationHtml(params) {
+  const rendered = renderInvitationEmail(params)
+  return rendered.richHtml
 }
 
 /**

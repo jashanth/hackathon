@@ -2477,7 +2477,7 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
               <FileText size={14} /> Official Brochure Specification Included
             </div>
             <div>
-              <strong>Key Differentiator Included:</strong> Unlike conventional hackathons, this initiative aims to connect students with real-world industry challenges, encouraging them to build practical solutions with opportunities for further development beyond the event.
+              <strong>✦ The Vision Included:</strong> Connecting students with real-world industry challenges and creating opportunities for promising solutions to grow beyond the hackathon.
             </div>
             <div style={{ marginTop: '4px', fontSize: '11.5px', color: 'var(--ink-soft)' }}>
               Projected Scale: <strong>700–1000 builders</strong> · Dates: <strong>Feb 19–20, 2027</strong> · Venue: <strong>KGRCET Hyderabad</strong>
