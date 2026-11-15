@@ -2319,7 +2319,7 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
           {/* Predefined Template Quick Selector */}
           <div className="form-group">
             <label htmlFor="inv-template-select">
-              <strong>Select Predefined Template</strong>
+              <strong>Select Invitation Template</strong>
               <small style={{ color: 'var(--ink-soft)', display: 'block', fontWeight: 400, marginTop: '2px' }}>
                 Choosing a template pre-populates category, subject, and tailored copy. All fields remain fully editable.
               </small>
@@ -2339,25 +2339,6 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
             <div className="form-group">
-              <label htmlFor="inv-category-select">Recipient Category *</label>
-              <select
-                id="inv-category-select"
-                className="form-input"
-                value={formCategory}
-                onChange={(e) => {
-                  setFormCategory(e.target.value as InvitationCategory)
-                  setFormError('')
-                }}
-                required
-              >
-                <option value="Internal College">Internal College</option>
-                <option value="External College">External College</option>
-                <option value="Sponsor">Sponsor</option>
-                <option value="Custom">Custom</option>
-              </select>
-            </div>
-
-            <div className="form-group">
               <label htmlFor="inv-name-input">Recipient Name *</label>
               <input
                 id="inv-name-input"
@@ -2370,6 +2351,21 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
                   setFormError('')
                 }}
                 required
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="inv-desig-input">Designation</label>
+              <input
+                id="inv-desig-input"
+                className="form-input"
+                type="text"
+                placeholder="e.g. Principal / Head of Department"
+                value={formDesignation}
+                onChange={(e) => {
+                  setFormDesignation(e.target.value)
+                  setFormError('')
+                }}
               />
             </div>
           </div>
@@ -2391,40 +2387,25 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
             </div>
 
             <div className="form-group">
-              <label htmlFor="inv-desig-input">Designation</label>
+              <label htmlFor="inv-email-input">
+                Email Address(es) *
+                <small style={{ color: 'var(--ink-soft)', marginLeft: '8px', fontWeight: 400 }}>
+                  (Separate with commas)
+                </small>
+              </label>
               <input
-                id="inv-desig-input"
+                id="inv-email-input"
                 className="form-input"
                 type="text"
-                placeholder="e.g. Principal / Head of Department"
-                value={formDesignation}
+                placeholder="e.g. principal@college.ac.in, hod.cse@college.ac.in"
+                value={formEmail}
                 onChange={(e) => {
-                  setFormDesignation(e.target.value)
+                  setFormEmail(e.target.value)
                   setFormError('')
                 }}
+                required
               />
             </div>
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="inv-email-input">
-              Email Address(es) *
-              <small style={{ color: 'var(--ink-soft)', marginLeft: '8px', fontWeight: 400 }}>
-                (Separate multiple emails with commas)
-              </small>
-            </label>
-            <input
-              id="inv-email-input"
-              className="form-input"
-              type="text"
-              placeholder="e.g. principal@college.ac.in, hod.cse@college.ac.in"
-              value={formEmail}
-              onChange={(e) => {
-                setFormEmail(e.target.value)
-                setFormError('')
-              }}
-              required
-            />
           </div>
 
           {/* Duplicate Protection Live Warning & Override */}

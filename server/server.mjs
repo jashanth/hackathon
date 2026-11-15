@@ -1518,10 +1518,15 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         try {
           await mailer.sendMail({
             from: mailer.from,
-            to: testTarget,
+            to: `"${sanitizeHeader(recipientName || admin.name || 'Invited Dignitary')}" <${testTarget}>`,
+            replyTo: EVENT_DETAILS.contactEmail || 'cseh@kgrcet.edu.in',
             subject: rendered.subject.startsWith('[TEST]') ? rendered.subject : `[TEST] ${rendered.subject}`,
             html: rendered.html,
             text: rendered.text,
+            headers: {
+              'X-Priority': '1',
+              'Importance': 'high',
+            },
           })
           recordAuditLog({
             ip: clientIp(req),
@@ -1597,10 +1602,15 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         try {
           await mailer.sendMail({
             from: mailer.from,
-            to: targetEmail,
+            to: `"${sanitizeHeader(recipientName || 'Invited Dignitary')}" <${targetEmail}>`,
+            replyTo: EVENT_DETAILS.contactEmail || 'cseh@kgrcet.edu.in',
             subject: rendered.subject,
             html: rendered.html,
             text: rendered.text,
+            headers: {
+              'X-Priority': '1',
+              'Importance': 'high',
+            },
           })
         } catch (err) {
           status = 'failed'
@@ -1667,10 +1677,15 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       try {
         await mailer.sendMail({
           from: mailer.from,
-          to: existing.email,
+          to: `"${sanitizeHeader(existing.recipient_name || 'Invited Dignitary')}" <${existing.email}>`,
+          replyTo: EVENT_DETAILS.contactEmail || 'cseh@kgrcet.edu.in',
           subject: rendered.subject,
           html: rendered.html,
           text: rendered.text,
+          headers: {
+            'X-Priority': '1',
+            'Importance': 'high',
+          },
         })
       } catch (err) {
         status = 'failed'
