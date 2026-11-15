@@ -1454,9 +1454,9 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         institution: input?.institution,
         category: input?.category,
         templateKey: input?.templateKey,
+        senderName: admin?.name || 'Sai Vaibhav',
         subject: input?.subject,
         message: input?.message,
-        event: { ...EVENT_DETAILS, logoUrl: '/assets/kgrcet-logo.png' },
       })
       return json(res, 200, rendered)
     }
@@ -1474,9 +1474,9 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         institution: existing.institution,
         category: existing.category,
         templateKey: existing.template_key,
+        senderName: admin?.name || 'Sai Vaibhav',
         subject: existing.subject,
         message: existing.message,
-        event: { ...EVENT_DETAILS, logoUrl: '/assets/kgrcet-logo.png' },
       })
 
       res.writeHead(200, {
@@ -1512,6 +1512,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
           institution,
           category,
           templateKey,
+          senderName: admin?.name || 'Sai Vaibhav',
           subject: customSubject ? `[TEST] ${customSubject}` : undefined,
           message: customMessage,
         })
@@ -1521,11 +1522,8 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
             to: `"${sanitizeHeader(recipientName || admin.name || 'Invited Dignitary')}" <${testTarget}>`,
             replyTo: EVENT_DETAILS.contactEmail || 'cseh@kgrcet.edu.in',
             subject: rendered.subject.startsWith('[TEST]') ? rendered.subject : `[TEST] ${rendered.subject}`,
+            html: rendered.html,
             text: rendered.text,
-            headers: {
-              'X-Priority': '1',
-              'Importance': 'high',
-            },
           })
           recordAuditLog({
             ip: clientIp(req),
@@ -1592,6 +1590,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
           institution,
           category,
           templateKey,
+          senderName: admin?.name || 'Sai Vaibhav',
           subject: customSubject,
           message: customMessage,
         })
@@ -1604,11 +1603,8 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
             to: `"${sanitizeHeader(recipientName || 'Invited Dignitary')}" <${targetEmail}>`,
             replyTo: EVENT_DETAILS.contactEmail || 'cseh@kgrcet.edu.in',
             subject: rendered.subject,
+            html: rendered.html,
             text: rendered.text,
-            headers: {
-              'X-Priority': '1',
-              'Importance': 'high',
-            },
           })
         } catch (err) {
           status = 'failed'
@@ -1664,9 +1660,9 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         institution: existing.institution,
         category: existing.category,
         templateKey: existing.template_key,
+        senderName: admin?.name || 'Sai Vaibhav',
         subject: existing.subject,
         message: existing.message,
-        event: { ...EVENT_DETAILS, logoUrl: '/assets/kgrcet-logo.png' },
       })
 
       const now = Date.now()
@@ -1678,11 +1674,8 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
           to: `"${sanitizeHeader(existing.recipient_name || 'Invited Dignitary')}" <${existing.email}>`,
           replyTo: EVENT_DETAILS.contactEmail || 'cseh@kgrcet.edu.in',
           subject: rendered.subject,
+          html: rendered.html,
           text: rendered.text,
-          headers: {
-            'X-Priority': '1',
-            'Importance': 'high',
-          },
         })
       } catch (err) {
         status = 'failed'

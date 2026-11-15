@@ -117,8 +117,22 @@ const defaultInvitationTemplates: Record<string, InvitationTemplate> = {
     id: 'external',
     name: 'External College Invitation',
     category: 'External College',
-    subject: "Official Invitation: KGRCET's HACKATHON 2027 — 36-Hour National Level Hackathon",
-    message: "On behalf of the Department of Computer Science and Engineering, KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, we cordially invite your institution to participate in **KGRCET's HACKATHON 2027** — a 36-hour national-level event bringing together student innovators and developers from across India.\n\nWe encourage your institution to nominate interested students and faculty mentors to be part of this initiative.",
+    subject: 'KGRCET Hackathon 2027 (Feb 19-20) - could you share with your students?',
+    message: `Dear Prof. {LastName},
+
+I'm {YourName}, an organizer with the Cybersecurity & Ethical Hacking Club at KG Reddy College of Engineering & Technology, Hyderabad. We're hosting KGRCET's Hackathon 2027 on February 19-20, 2027, a 36-hour hackathon for teams of 2-4 students, and I'd be grateful if you could pass it on to students in your department.
+
+Registration and details are here:
+https://hackathon.cybersec-kgrcet.com/register
+
+If you have any questions, just reply to this email.
+
+Regards,
+{YourName}
+Cybersecurity & Ethical Hacking Club, KGRCET
+cseh@kgrcet.edu.in
+
+If you'd rather not hear from us, reply STOP and we won't write again.`,
   },
   sponsor: {
     id: 'sponsor',
@@ -873,7 +887,8 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
     if (tpl) {
       setFormCategory((tpl.category as InvitationCategory) || 'Internal College')
       setFormSubject(tpl.subject)
-      setFormMessage(tpl.message)
+      const resolvedMsg = tpl.message.replace(/\{YourName\}/g, session?.name || 'Sai Vaibhav')
+      setFormMessage(resolvedMsg)
     }
   }
 
@@ -886,7 +901,8 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
     setFormDesignation(presetKey === 'internal' ? 'Faculty / HOD' : presetKey === 'external' ? 'Principal / Dean' : '')
     setFormCategory((tpl?.category as InvitationCategory) || 'Internal College')
     setFormSubject(tpl?.subject || '')
-    setFormMessage(tpl?.message || '')
+    const resolvedMsg = (tpl?.message || '').replace(/\{YourName\}/g, session?.name || 'Sai Vaibhav')
+    setFormMessage(resolvedMsg)
     setFormAllowDuplicate(false)
     setFormError('')
     setCreateInviteOpen(true)

@@ -1,426 +1,109 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Preview: KGRCET Hackathon 2027 Invitation</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      padding: 0;
-      background-color: #060508;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      color: #f5efe3;
-    }
-    .preview-bar {
-      position: sticky;
-      top: 0;
-      z-index: 9999;
-      background: #0f0b15;
-      border-bottom: 1px solid #332718;
-      padding: 12px 20px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      flex-wrap: wrap;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-    }
-    .preview-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: #dcb872;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      font-family: monospace;
-    }
-    .preview-tabs {
-      display: flex;
-      gap: 8px;
-    }
-    .tab-btn {
-      padding: 6px 14px;
-      font-size: 12px;
-      font-weight: 600;
-      border-radius: 4px;
-      border: 1px solid #332718;
-      background: #171120;
-      color: #c2b9ab;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .tab-btn.active {
-      background: #dcb872;
-      color: #0e0b13;
-      border-color: #dcb872;
-    }
-    .view-container {
-      padding: 30px 16px 60px;
-      display: flex;
-      justify-content: center;
-    }
-    .plain-text-box {
-      max-width: 680px;
-      width: 100%;
-      background: #0e0b13;
-      border: 1px solid #332718;
-      border-radius: 4px;
-      padding: 32px 28px;
-      font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 13.5px;
-      line-height: 1.65;
-      color: #f5efe3;
-      white-space: pre-wrap;
-      word-break: break-word;
-      box-shadow: 0 20px 50px rgba(0,0,0,0.85);
-      margin: 0;
-    }
-    .badge {
-      display: inline-block;
-      font-size: 11px;
-      font-weight: 600;
-      color: #10b981;
-      background: rgba(16, 185, 129, 0.12);
-      border: 1px solid rgba(16, 185, 129, 0.3);
-      padding: 2px 8px;
-      border-radius: 3px;
-      margin-left: 8px;
-      vertical-align: middle;
-    }
-  </style>
-</head>
-<body>
-  <div class="preview-bar">
-    <div>
-      <span class="preview-title">KGRCET 2027 Invitation Preview</span>
-      <span class="badge">PURE PLAIN-TEXT ACTIVE</span>
-    </div>
-    <div class="preview-tabs">
-      <button class="tab-btn active" id="btn-plain" onclick="showView('plain')">📄 Plain-Text (Sent to Inboxes)</button>
-      <button class="tab-btn" id="btn-rich" onclick="showView('rich')">🎨 Rich HTML (Kept Aside)</button>
-    </div>
-  </div>
-
-  <div id="view-plain" class="view-container">
-    <pre class="plain-text-box">==================================================
-# KGRCET's HACKATHON 2027
-### A 36-HOUR NATIONAL-LEVEL HACKATHON
-Led by CSEH Club · In association with Blockchain Club &amp; CSI Student Chapter
-==================================================
-
-✦ OFFICIAL EVENT INVITATION
-
-Respected Sir / Madam,
-Principal / Dean · Distinguished Institution
-
-On behalf of the Department of Computer Science and Engineering, KG Reddy College of Engineering &amp; Technology (KGRCET), Hyderabad, we cordially invite your institution to participate in **KGRCET's HACKATHON 2027** — a 36-hour national-level event bringing together student innovators and developers from across India.
-
-We encourage your institution to nominate interested students and faculty mentors to be part of this initiative.
-
-✦ THE VISION
---------------------------------------------------
-Connecting students with real-world industry challenges and creating opportunities for promising solutions to grow beyond the hackathon.
-
-✦ EVENT DETAILS
---------------------------------------------------
-Detail               | Information
----------------------|--------------------------------------------
-Dates                | February 19–20, 2027
-Duration             | 36 Hours
-Participation Target | 700–1,000 Students Nationwide
-Prize Pool           | ₹1,00,000 (Provisional)
-Team Size            | 2–4 Students
-Venue                | KGRCET, Moinabad, Hyderabad, Telangana – 501504
-
-✦ CHALLENGE DOMAINS
---------------------------------------------------
-1. Generative AI &amp; LLM Applications
-2. Cybersecurity &amp; Digital Forensics
-3. FinTech &amp; Blockchain
-4. HealthTech &amp; Mental Well-being
-5. Open Innovation
-
-We encourage your institution to share this invitation with interested students and faculty members and motivate them to participate in this national-level initiative.
-
-We look forward to your institution's participation and to building meaningful connections between students, academia and industry.
-
-We look forward to your institution's participation and support in making this event a success.
-
-REGISTER STUDENT TEAMS:
-https://hackathon.cybersec-kgrcet.com/register
-
-Official Website: https://hackathon.cybersec-kgrcet.com/
-
----
-Warm Regards,
-
-Cybersecurity &amp; Ethical Hacking Club (CSEH)
-In association with Blockchain Club &amp; CSI Student Chapter
-KG Reddy College of Engineering &amp; Technology
-Hyderabad, Telangana, India
-==================================================</pre>
-  </div>
-
-  <div id="view-rich" class="view-container" style="display: none;">
-    <iframe id="rich-frame" style="width: 100%; max-width: 680px; height: 1200px; border: none; border-radius: 4px;" srcdoc="<!DOCTYPE html>
-<html lang=&quot;en&quot; xmlns=&quot;http://www.w3.org/1999/xhtml&quot; xmlns:v=&quot;urn:schemas-microsoft-com:vml&quot; xmlns:o=&quot;urn:schemas-microsoft-com:office:office&quot;>
-<head>
-  <meta charset=&quot;utf-8&quot;>
-  <meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1.0&quot;>
-  <meta http-equiv=&quot;X-UA-Compatible&quot; content=&quot;IE=edge&quot;>
-  <meta name=&quot;color-scheme&quot; content=&quot;dark&quot;>
-  <meta name=&quot;supported-color-schemes&quot; content=&quot;dark&quot;>
-  <title>Official Invitation: KGRCET&#39;s HACKATHON 2027 — 36-Hour National Level Hackathon</title>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="color-scheme" content="dark">
+  <meta name="supported-color-schemes" content="dark">
+  <title>KGRCET Hackathon 2027 (Feb 19-20) - could you share with your students?</title>
   
-  <!-- Web fonts with web-safe fallbacks -->
-  <link rel=&quot;preconnect&quot; href=&quot;https://fonts.googleapis.com&quot;>
-  <link rel=&quot;preconnect&quot; href=&quot;https://fonts.gstatic.com&quot; crossorigin>
-  <link href=&quot;https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Geist+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&display=swap&quot; rel=&quot;stylesheet&quot;>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Geist+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <style>
-    /* Client resets */
     body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
     table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
     img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
-    
-    /* Responsive breakpoints */
     @media only screen and (max-width: 620px) {
       .email-container { width: 100% !important; max-width: 100% !important; }
       .mobile-p-20 { padding: 24px 18px !important; }
       .mobile-title { font-size: 27px !important; line-height: 1.15 !important; }
-      .mobile-stat-col { display: block !important; width: 100% !important; margin-bottom: 12px !important; }
     }
   </style>
 </head>
-<body style=&quot;margin: 0; padding: 0; background-color: #07060a; font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5efe3; -webkit-font-smoothing: antialiased;&quot;>
+<body style="margin: 0; padding: 0; background-color: #07060a; font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5efe3; -webkit-font-smoothing: antialiased;">
 
   <!-- Outer Canvas (Deep Obsidian / Void) -->
-  <table role=&quot;presentation&quot; width=&quot;100%&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;background-color: #07060a; padding: 40px 12px;&quot;>
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #07060a; padding: 40px 12px;">
     <tr>
-      <td align=&quot;center&quot;>
+      <td align="center">
         
         <!-- Main Card Container -->
-        <table role=&quot;presentation&quot; class=&quot;email-container&quot; width=&quot;100%&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;max-width: 620px; background-color: #0e0b13; border: 1px solid #332718; border-radius: 4px; overflow: hidden; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85);&quot;>
+        <table role="presentation" class="email-container" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 620px; background-color: #0e0b13; border: 1px solid #332718; border-radius: 4px; overflow: hidden; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85);">
           
           <!-- Top Celestial Gold Foil Accent Bar -->
           <tr>
-            <td style=&quot;height: 3px; background: #dcb872; background: linear-gradient(90deg, #94702f 0%, #dcb872 30%, #fff4d6 50%, #dcb872 70%, #94702f 100%); font-size: 1px; line-height: 1px;&quot;>&nbsp;</td>
+            <td style="height: 3px; background: #dcb872; background: linear-gradient(90deg, #94702f 0%, #dcb872 30%, #fff4d6 50%, #dcb872 70%, #94702f 100%); font-size: 1px; line-height: 1px;">&nbsp;</td>
           </tr>
 
           <!-- Banner / Grand Institutional Header -->
           <tr>
-            <td class=&quot;mobile-p-20&quot; style=&quot;background-color: #120e18; background: linear-gradient(180deg, #171120 0%, #0e0b13 100%); padding: 36px 32px 28px; text-align: center; border-bottom: 1px solid #2a2016;&quot;>
-
-              <!-- Grand Hackathon Title (Cormorant Serif Display) -->
-              <h1 class=&quot;mobile-title&quot; style=&quot;margin: 0; font-family: 'Cormorant', Garamond, 'Times New Roman', Georgia, serif; font-size: 34px; font-weight: 300; line-height: 1.1; letter-spacing: -0.01em; color: #ffffff;&quot;>
-                KGRCET's HACKATHON <span style=&quot;font-style: italic; color: #dcb872; font-weight: 400;&quot;>2027</span>
+            <td class="mobile-p-20" style="background-color: #120e18; background: linear-gradient(180deg, #171120 0%, #0e0b13 100%); padding: 36px 32px 28px; text-align: center; border-bottom: 1px solid #2a2016;">
+              <h1 class="mobile-title" style="margin: 0; font-family: 'Cormorant', Garamond, 'Times New Roman', Georgia, serif; font-size: 34px; font-weight: 300; line-height: 1.1; letter-spacing: -0.01em; color: #ffffff;">
+                KGRCET's HACKATHON <span style="font-style: italic; color: #dcb872; font-weight: 400;">2027</span>
               </h1>
-
-              <!-- Tagline (Mono Spaced) -->
-              <p style=&quot;margin: 10px 0 0 0; font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 400; color: #c2b9ab; letter-spacing: 2.4px; text-transform: uppercase;&quot;>
+              <p style="margin: 10px 0 0 0; font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 400; color: #c2b9ab; letter-spacing: 2.4px; text-transform: uppercase;">
                 A 36-HOUR NATIONAL-LEVEL HACKATHON
               </p>
-
-              <!-- Affiliation Badges -->
-              <div style=&quot;margin-top: 14px; font-family: 'Geist Mono', monospace; font-size: 10px; color: #94897c; letter-spacing: 1.2px; text-transform: uppercase;&quot;>
-                Led by <span style=&quot;color: #f8e8c0; font-weight: 600;&quot;>CSEH Club</span> · In association with <span style=&quot;color: #f8e8c0; font-weight: 600;&quot;>Blockchain Club</span> &amp; <span style=&quot;color: #f8e8c0; font-weight: 600;&quot;>CSI Student Chapter</span>
+              <div style="margin-top: 14px; font-family: 'Geist Mono', monospace; font-size: 10px; color: #94897c; letter-spacing: 1.2px; text-transform: uppercase;">
+                Led by <span style="color: #f8e8c0; font-weight: 600;">CSEH Club</span> · In association with <span style="color: #f8e8c0; font-weight: 600;">Blockchain Club</span> &amp; <span style="color: #f8e8c0; font-weight: 600;">CSI Student Chapter</span>
               </div>
-
             </td>
           </tr>
 
           <!-- Content Body -->
           <tr>
-            <td class=&quot;mobile-p-20&quot; style=&quot;padding: 34px 32px;&quot;>
+            <td class="mobile-p-20" style="padding: 34px 32px;">
               
               <!-- Official Invitation Badge -->
-              <table role=&quot;presentation&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;margin-bottom: 24px;&quot;>
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin-bottom: 24px;">
                 <tr>
-                  <td style=&quot;background-color: #1a140d; border: 1px solid #dcb872; padding: 6px 14px; border-radius: 2px;&quot;>
-                    <span style=&quot;font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 600; color: #f8e8c0; letter-spacing: 1.6px; text-transform: uppercase;&quot;>
+                  <td style="background-color: #1a140d; border: 1px solid #dcb872; padding: 6px 14px; border-radius: 2px;">
+                    <span style="font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 600; color: #f8e8c0; letter-spacing: 1.6px; text-transform: uppercase;">
                       ✦ OFFICIAL EVENT INVITATION
                     </span>
                   </td>
                 </tr>
               </table>
 
-              <!-- Formal Dignitary Salutation -->
-              <h2 style=&quot;margin: 0 0 8px 0; font-family: 'Cormorant', Garamond, 'Times New Roman', Georgia, serif; font-size: 26px; font-weight: 400; color: #ffffff; letter-spacing: 0.01em; line-height: 1.25;&quot;>
-                Respected Sir / Madam,
-              </h2>
-              
-              <div style=&quot;font-family: 'Geist Mono', monospace; font-size: 12px; color: #dcb872; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 22px;&quot;>
-                Principal / Dean · Distinguished Institution
-              </div>
-
-              <!-- Message Body -->
-              <p style=&quot;margin: 0 0 16px 0; font-size: 14.5px; line-height: 1.7; color: #c2b9ab;&quot;>On behalf of the Department of Computer Science and Engineering, KG Reddy College of Engineering &amp; Technology (KGRCET), Hyderabad, we cordially invite your institution to participate in <strong style=&quot;color: #ffffff;&quot;>KGRCET&#39;s HACKATHON 2027</strong> — a 36-hour national-level event bringing together student innovators and developers from across India.</p><p style=&quot;margin: 0 0 16px 0; font-size: 14.5px; line-height: 1.7; color: #c2b9ab;&quot;>We encourage your institution to nominate interested students and faculty mentors to be part of this initiative.</p>
-
-              <!-- The Vision Card -->
-              <table role=&quot;presentation&quot; width=&quot;100%&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;background-color: #16101d; border: 1px solid #dcb872; border-radius: 3px; margin: 24px 0 28px;&quot;>
-                <tr>
-                  <td style=&quot;padding: 18px 20px;&quot;>
-                    <div style=&quot;font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 600; color: #dcb872; letter-spacing: 1.6px; text-transform: uppercase; margin-bottom: 8px;&quot;>
-                      ✦ THE VISION
-                    </div>
-                    <p style=&quot;margin: 0; font-size: 14px; line-height: 1.65; color: #f8e8c0;&quot;>
-                      Connecting students with real-world industry challenges and creating opportunities for promising solutions to grow beyond the hackathon.
-                    </p>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Event Details Table -->
-              <table role=&quot;presentation&quot; width=&quot;100%&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;background-color: #120e18; border: 1px solid #332718; border-left: 3px solid #dcb872; border-radius: 3px; margin-bottom: 28px;&quot;>
-                <tr>
-                  <td style=&quot;padding: 20px 22px;&quot;>
-                    
-                    <div style=&quot;font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 600; color: #dcb872; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid #231b26;&quot;>
-                      ✦ EVENT DETAILS
-                    </div>
-
-                    <table role=&quot;presentation&quot; width=&quot;100%&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;font-size: 13.5px; line-height: 1.65; border-collapse: collapse;&quot;>
-                      <tr style=&quot;border-bottom: 1px solid #2a2016;&quot;>
-                        <th align=&quot;left&quot; style=&quot;padding: 8px 6px; font-family: 'Geist Mono', monospace; font-size: 11px; color: #dcb872; text-transform: uppercase; letter-spacing: 1px; width: 38%;&quot;>Detail</th>
-                        <th align=&quot;left&quot; style=&quot;padding: 8px 6px; font-family: 'Geist Mono', monospace; font-size: 11px; color: #dcb872; text-transform: uppercase; letter-spacing: 1px;&quot;>Information</th>
-                      </tr>
-                      <tr>
-                        <td style=&quot;padding: 8px 6px; font-family: 'Geist Mono', monospace; font-size: 11.5px; color: #94897c; text-transform: uppercase; border-top: 1px solid #1c1524;&quot;>Dates</td>
-                        <td style=&quot;padding: 8px 6px; color: #f8e8c0; font-weight: 700; border-top: 1px solid #1c1524;&quot;>February 19–20, 2027</td>
-                      </tr>
-                      <tr>
-                        <td style=&quot;padding: 8px 6px; font-family: 'Geist Mono', monospace; font-size: 11.5px; color: #94897c; text-transform: uppercase; border-top: 1px solid #1c1524;&quot;>Duration</td>
-                        <td style=&quot;padding: 8px 6px; color: #f8e8c0; font-weight: 700; border-top: 1px solid #1c1524;&quot;>36 Hours</td>
-                      </tr>
-                      <tr>
-                        <td style=&quot;padding: 8px 6px; font-family: 'Geist Mono', monospace; font-size: 11.5px; color: #94897c; text-transform: uppercase; border-top: 1px solid #1c1524;&quot;>Participation Target</td>
-                        <td style=&quot;padding: 8px 6px; color: #f8e8c0; font-weight: 700; border-top: 1px solid #1c1524;&quot;>700–1,000 Students Nationwide</td>
-                      </tr>
-                      <tr>
-                        <td style=&quot;padding: 8px 6px; font-family: 'Geist Mono', monospace; font-size: 11.5px; color: #94897c; text-transform: uppercase; border-top: 1px solid #1c1524;&quot;>Prize Pool</td>
-                        <td style=&quot;padding: 8px 6px; color: #dcb872; font-weight: 700; border-top: 1px solid #1c1524;&quot;>₹1,00,000 (Provisional)</td>
-                      </tr>
-                      <tr>
-                        <td style=&quot;padding: 8px 6px; font-family: 'Geist Mono', monospace; font-size: 11.5px; color: #94897c; text-transform: uppercase; border-top: 1px solid #1c1524;&quot;>Team Size</td>
-                        <td style=&quot;padding: 8px 6px; color: #f8e8c0; font-weight: 700; border-top: 1px solid #1c1524;&quot;>2–4 Students</td>
-                      </tr>
-                      <tr>
-                        <td style=&quot;padding: 8px 6px; font-family: 'Geist Mono', monospace; font-size: 11.5px; color: #94897c; text-transform: uppercase; border-top: 1px solid #1c1524;&quot;>Venue</td>
-                        <td style=&quot;padding: 8px 6px; color: #c2b9ab; border-top: 1px solid #1c1524;&quot;>KGRCET, Moinabad, Hyderabad, Telangana – 501504</td>
-                      </tr>
-                    </table>
-
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Challenge Domains -->
-              <div style=&quot;margin-bottom: 28px;&quot;>
-                <div style=&quot;font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 600; color: #dcb872; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px;&quot;>
-                  ✦ CHALLENGE DOMAINS
+              <h2 style="margin: 0 0 16px 0; font-family: 'Cormorant', Garamond, 'Times New Roman', Georgia, serif; font-size: 26px; font-weight: 400; color: #ffffff; letter-spacing: 0.01em; line-height: 1.25;">Dear Prof. Kumar,</h2><p style="margin: 0 0 16px 0; font-size: 14.5px; line-height: 1.7; color: #c2b9ab;">I&#39;m Sai Vaibhav, an organizer with the Cybersecurity &amp; Ethical Hacking Club at KG Reddy College of Engineering &amp; Technology, Hyderabad. We&#39;re hosting KGRCET&#39;s Hackathon 2027 on February 19-20, 2027, a 36-hour hackathon for teams of 2-4 students, and I&#39;d be grateful if you could pass it on to students in your department.</p>
+              <div style="margin: 24px 0; padding: 18px 20px; background-color: #120e18; border: 1px solid #332718; border-left: 3px solid #dcb872; border-radius: 3px;">
+                <div style="font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 600; color: #dcb872; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px;">
+                  ✦ REGISTRATION &amp; EVENT DETAILS
                 </div>
-                
-                <table role=&quot;presentation&quot; width=&quot;100%&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;background-color: #0e0b13; border: 1px solid #231b26; border-radius: 3px;&quot;>
-                  <tr>
-                    <td style=&quot;padding: 10px 14px; border-bottom: 1px solid #1c1524; font-size: 13.5px; color: #f5efe3;&quot;>
-                      <span style=&quot;font-family: 'Geist Mono', monospace; color: #dcb872; font-weight: 600; margin-right: 8px;&quot;>1.</span>
-                      Generative AI &amp; LLM Applications
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style=&quot;padding: 10px 14px; border-bottom: 1px solid #1c1524; font-size: 13.5px; color: #f5efe3;&quot;>
-                      <span style=&quot;font-family: 'Geist Mono', monospace; color: #dcb872; font-weight: 600; margin-right: 8px;&quot;>2.</span>
-                      Cybersecurity &amp; Digital Forensics
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style=&quot;padding: 10px 14px; border-bottom: 1px solid #1c1524; font-size: 13.5px; color: #f5efe3;&quot;>
-                      <span style=&quot;font-family: 'Geist Mono', monospace; color: #dcb872; font-weight: 600; margin-right: 8px;&quot;>3.</span>
-                      FinTech &amp; Blockchain
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style=&quot;padding: 10px 14px; border-bottom: 1px solid #1c1524; font-size: 13.5px; color: #f5efe3;&quot;>
-                      <span style=&quot;font-family: 'Geist Mono', monospace; color: #dcb872; font-weight: 600; margin-right: 8px;&quot;>4.</span>
-                      HealthTech &amp; Mental Well-being
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style=&quot;padding: 10px 14px; font-size: 13.5px; color: #f5efe3;&quot;>
-                      <span style=&quot;font-family: 'Geist Mono', monospace; color: #dcb872; font-weight: 600; margin-right: 8px;&quot;>5.</span>
-                      Open Innovation
-                    </td>
-                  </tr>
-                </table>
-              </div>
-
-              <!-- Call to Action Note (Institutional Outreach, strictly External College) -->
-              
-              <!-- Institutional Outreach & Call to Action Message -->
-              <div style=&quot;margin: 24px 0; padding: 16px 20px; background-color: #120e18; border: 1px solid #2a2016; border-left: 3px solid #dcb872; border-radius: 3px;&quot;>
-                <p style=&quot;margin: 0 0 10px 0; font-size: 14px; line-height: 1.65; color: #f5efe3;&quot;>We encourage your institution to share this invitation with interested students and faculty members and motivate them to participate in this national-level initiative.</p><p style=&quot;margin: 0; font-size: 14px; line-height: 1.65; color: #dcb872;&quot;>We look forward to your institution&#39;s participation and to building meaningful connections between students, academia and industry.</p>
-              </div>
-
-              <p style=&quot;margin: 20px 0 16px 0; font-size: 14.5px; line-height: 1.65; color: #c2b9ab;&quot;>We look forward to your institution's participation and support in making this event a success.</p>
-
-              <!-- Direct Links (Text-Only to maximize Primary inbox delivery) -->
-              <div style=&quot;margin: 24px 0 20px 0; font-size: 14px; line-height: 1.8; color: #f5efe3;&quot;>
-                <p style=&quot;margin: 0 0 10px 0;&quot;>
-                  <strong style=&quot;color: #ffffff; font-family: 'Geist Mono', monospace; font-size: 12px; letter-spacing: 0.5px;&quot;>REGISTER STUDENT TEAMS:</strong><br>
-                  <a href=&quot;https://hackathon.cybersec-kgrcet.com/register&quot; style=&quot;color: #dcb872; text-decoration: underline; word-break: break-all;&quot;>https://hackathon.cybersec-kgrcet.com/register</a>
-                </p>
-                <p style=&quot;margin: 12px 0 0 0;&quot;>
-                  <strong style=&quot;color: #ffffff; font-family: 'Geist Mono', monospace; font-size: 12px; letter-spacing: 0.5px;&quot;>Official Website:</strong> <a href=&quot;https://hackathon.cybersec-kgrcet.com/&quot; style=&quot;color: #dcb872; text-decoration: underline; word-break: break-all;&quot;>https://hackathon.cybersec-kgrcet.com/</a>
-                </p>
-              </div>
-
-              <!-- Formal Committee Sign-Off -->
-              <table role=&quot;presentation&quot; width=&quot;100%&quot; cellspacing=&quot;0&quot; cellpadding=&quot;0&quot; border=&quot;0&quot; style=&quot;border-top: 1px solid #231b26; padding-top: 22px; margin-top: 24px;&quot;>
+                <p style="margin: 0 0 8px 0; font-size: 14px; color: #c2b9ab;">Registration and details are here:</p>
+                <a href="https://hackathon.cybersec-kgrcet.com/register" style="color: #f8e8c0; font-size: 15px; font-weight: 600; text-decoration: underline; word-break: break-all;">
+                  https://hackathon.cybersec-kgrcet.com/register
+                </a>
+              </div><p style="margin: 0 0 16px 0; font-size: 14.5px; line-height: 1.7; color: #c2b9ab;">If you have any questions, just reply to this email.</p>
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-top: 1px solid #231b26; padding-top: 20px; margin-top: 24px;">
                 <tr>
                   <td>
-                    <p style=&quot;margin: 0 0 16px 0; font-size: 14px; color: #94897c; line-height: 1.6;&quot;>
-                      Warm Regards,
-                    </p>
-                    <p style=&quot;margin: 0 0 4px 0; font-size: 15px; font-weight: 600; color: #f5efe3;&quot;>
-                      Cybersecurity &amp; Ethical Hacking Club (CSEH)
-                    </p>
-                    <p style=&quot;margin: 0 0 12px 0; font-size: 13px; color: #dcb872;&quot;>
-                      In association with Blockchain Club &amp; CSI Student Chapter
-                    </p>
-                    <p style=&quot;margin: 0 0 2px 0; font-size: 13px; color: #c2b9ab;&quot;>
-                      KG Reddy College of Engineering &amp; Technology
-                    </p>
-                    <p style=&quot;margin: 0; font-size: 12px; color: #94897c;&quot;>
-                      Hyderabad, Telangana, India
-                    </p>
+                    <p style="margin: 0 0 6px 0; font-size: 14px; color: #94897c;">Regards,</p><p style="margin: 0 0 4px 0; font-size: 15px; font-weight: 600; color: #ffffff;">Sai Vaibhav</p><p style="margin: 0 0 2px 0; font-size: 13.5px; color: #dcb872;">Cybersecurity &amp; Ethical Hacking Club, KGRCET</p><p style="margin: 0; font-size: 13px; color: #94897c;"><a href="mailto:cseh@kgrcet.edu.in" style="color: #dcb872; text-decoration: none;">cseh@kgrcet.edu.in</a></p>
                   </td>
                 </tr>
-              </table>
+              </table><p style="margin: 24px 0 0 0; font-size: 12px; line-height: 1.5; color: #73695c; font-style: italic;">If you&#39;d rather not hear from us, reply STOP and we won&#39;t write again.</p>
 
             </td>
           </tr>
 
           <!-- Footer / Legal & Campus Details -->
           <tr>
-            <td style=&quot;background-color: #09070d; border-top: 1px solid #1f1722; padding: 26px 32px; text-align: center;&quot;>
-              
-              <div style=&quot;font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; color: #dcb872; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px;&quot;>
+            <td style="background-color: #09070d; border-top: 1px solid #1f1722; padding: 26px 32px; text-align: center;">
+              <div style="font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; color: #dcb872; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px;">
                 KG REDDY COLLEGE OF ENGINEERING AND TECHNOLOGY
               </div>
-
-              <p style=&quot;margin: 0 0 10px 0; font-size: 12px; line-height: 1.5; color: #94897c;&quot;>
+              <p style="margin: 0 0 10px 0; font-size: 12px; line-height: 1.5; color: #94897c;">
                 Beside Moinabad Police Station, Chilkur Village, Moinabad Mandal, Ranga Reddy District, Hyderabad, Telangana — 501504
               </p>
-
-              <p style=&quot;margin: 0; font-family: 'Geist Mono', monospace; font-size: 11px; color: #94897c;&quot;>
-                Inquiries &amp; Official Communications: <a href=&quot;mailto:cseh@kgrcet.edu.in&quot; style=&quot;color: #dcb872; text-decoration: none;&quot;>cseh@kgrcet.edu.in</a>
+              <p style="margin: 0; font-family: 'Geist Mono', monospace; font-size: 11px; color: #94897c;">
+                Inquiries &amp; Official Communications: <a href="mailto:cseh@kgrcet.edu.in" style="color: #dcb872; text-decoration: none;">cseh@kgrcet.edu.in</a>
               </p>
-
-              <div style=&quot;margin-top: 16px; font-size: 10.5px; color: #5a5246; font-family: 'Geist Mono', monospace;&quot;>
+              <div style="margin-top: 16px; font-size: 10.5px; color: #5a5246; font-family: 'Geist Mono', monospace;">
                 © 2027 KGRCET · DEPARTMENT OF COMPUTER SCIENCE AND ENGINEERING · ALL RIGHTS RESERVED
               </div>
-
             </td>
           </tr>
 
@@ -430,24 +113,5 @@ Hyderabad, Telangana, India
     </tr>
   </table>
 
-</body>
-</html>"></iframe>
-  </div>
-
-  <script>
-    function showView(view) {
-      if (view === 'plain') {
-        document.getElementById('view-plain').style.display = 'flex';
-        document.getElementById('view-rich').style.display = 'none';
-        document.getElementById('btn-plain').classList.add('active');
-        document.getElementById('btn-rich').classList.remove('active');
-      } else {
-        document.getElementById('view-plain').style.display = 'none';
-        document.getElementById('view-rich').style.display = 'flex';
-        document.getElementById('btn-plain').classList.remove('active');
-        document.getElementById('btn-rich').classList.add('active');
-      }
-    }
-  </script>
 </body>
 </html>
