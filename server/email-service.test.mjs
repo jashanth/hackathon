@@ -17,6 +17,8 @@ import {
   extractSalutation,
   renderInvitationEmail,
   INVITATION_TEMPLATES,
+  getInvitationSender,
+  toTitleCase,
 } from './email-service.mjs'
 import { createApp, hashPassword, ALLOWED_ADMINS } from './server.mjs'
 
@@ -134,6 +136,9 @@ test('renderMemberConfirmationEmail generates personalized branding for leader a
 
 test('renderInvitationEmail generates personal letter bypassing promotions tab', () => {
   // Test Name Title Case formatting
+  assert.equal(toTitleCase('JASHANTH'), 'Jashanth')
+  assert.equal(toTitleCase('jashanth'), 'Jashanth')
+  assert.equal(toTitleCase('dr. ramesh kumar'), 'Dr. Ramesh Kumar')
   assert.equal(formatRecipientName('JASHANTH'), 'Jashanth')
   assert.equal(formatRecipientName('jashanth'), 'Jashanth')
   assert.equal(formatRecipientName('DR. RAMESH KUMAR'), 'Dr. Ramesh Kumar')
@@ -146,14 +151,19 @@ test('renderInvitationEmail generates personal letter bypassing promotions tab',
   assert.equal(extractSalutation('Dr. Ramesh Kumar'), 'Respected Dr. Ramesh Kumar,')
   assert.equal(extractSalutation('Sir / Madam'), 'Respected Sir / Madam,')
 
+  // Test Sender
+  const defaultSender = getInvitationSender()
+  assert.equal(defaultSender.fromName, 'CSEH Club - KGRCET')
+  assert.match(defaultSender.from, /"CSEH Club - KGRCET"/)
+
   // Render Invitation Email with ALL CAPS input
   const email = renderInvitationEmail({
     recipientName: 'JASHANTH',
     senderName: 'Sai Vaibhav',
   })
 
-  // Subject line checks: must be sentence/lower case 'KGRCET hackathon 2027', no ALL CAPS
-  assert.equal(email.subject, 'KGRCET hackathon 2027')
+  // Subject line checks: must be 'KGRCET Hackathon 2027', no ALL CAPS
+  assert.equal(email.subject, 'KGRCET Hackathon 2027')
   assert.doesNotMatch(email.subject, /HACKATHON/)
   assert.doesNotMatch(email.subject, /—/)
   assert.doesNotMatch(email.subject, /Invitation:/)
@@ -187,11 +197,15 @@ test('renderInvitationEmail generates personal letter bypassing promotions tab',
   // Official portal link
   assert.match(email.html, /https:\/\/hackathon\.cybersec-kgrcet\.com\//)
 
-  // Sign-off: Warm regards
+  // Sign-off: Warm regards (Institutional, no personal name)
   assert.match(email.html, /Warm regards,/)
-  assert.match(email.html, /Sai Vaibhav/)
-  assert.match(email.html, /Cybersecurity &amp; Ethical Hacking Club, KGRCET/)
-  assert.match(email.text, /Warm regards,\nSai Vaibhav\nCybersecurity & Ethical Hacking Club, KGRCET/)
+  assert.match(email.html, /Cybersecurity &amp; Ethical Hacking Club \(CSEH\)/)
+  assert.match(email.html, /In association with Blockchain Club &amp; CSI Student Chapter/)
+  assert.match(email.html, /KG Reddy College of Engineering &amp; Technology/)
+  assert.match(email.html, /Hyderabad, Telangana, India/)
+  assert.doesNotMatch(email.html, /Sai Vaibhav/)
+  assert.match(email.text, /Warm regards,\nCybersecurity & Ethical Hacking Club \(CSEH\)\nIn association with Blockchain Club & CSI Student Chapter\nKG Reddy College of Engineering & Technology\nHyderabad, Telangana, India/)
+  assert.doesNotMatch(email.text, /Sai Vaibhav/)
 
   // Anti-spam opt-out
   assert.match(email.html, /reply STOP and we won&#39;t write again/)

@@ -127,10 +127,42 @@ Challenge Domains:
 Student teams can find the full details and register directly on our official portal: https://hackathon.cybersec-kgrcet.com/
 
 Warm regards,
-{YourName}
-Cybersecurity & Ethical Hacking Club, KGRCET
+Cybersecurity & Ethical Hacking Club (CSEH)
+In association with Blockchain Club & CSI Student Chapter
+KG Reddy College of Engineering & Technology
+Hyderabad, Telangana, India
 
 If you'd rather not hear from us, reply STOP and we won't write again.`
+
+const DEFAULT_EXTERNAL_INVITATION_BODY = `KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, is pleased to invite your institution to participate in **KGRCET's Hackathon 2027**, a 36-hour national-level hackathon organized by our Cybersecurity & Ethical Hacking Club (CSEH Club), in association with the Blockchain Club and CSI Student Chapter. We welcome students from your institution to be part of this event and showcase their innovation, technical skills, and problem-solving abilities. We are bringing together 700+ student developers and innovators from across the country to solve real-world industry problems. We would greatly appreciate your support in sharing this opportunity with your students.
+
+Event Overview:
+• Dates: February 19–20, 2027 (36 Hours)
+• Venue: KGRCET Campus, Moinabad, Hyderabad
+• Team Size: 2–4 Students
+• Prize Pool: ₹1,00,000 (Provisional)
+
+Challenge Domains:
+1. Generative AI & LLM Applications
+2. Cybersecurity & Digital Forensics
+3. FinTech & Blockchain
+4. HealthTech & Mental Well-being
+5. Open Innovation
+
+Student teams can find the full details and register directly on our official portal: https://hackathon.cybersec-kgrcet.com/
+
+Warm regards,
+Cybersecurity & Ethical Hacking Club (CSEH)
+In association with Blockchain Club & CSI Student Chapter
+KG Reddy College of Engineering & Technology
+Hyderabad, Telangana, India
+
+If you'd rather not hear from us, reply STOP and we won't write again.`
+
+export function toTitleCase(fullName: string): string {
+  if (!fullName || typeof fullName !== 'string') return ''
+  return fullName.toLowerCase().replace(/(^|[^\p{L}\p{N}])(\p{L})/gu, (_, sep, letter) => sep + letter.toUpperCase())
+}
 
 function formatRecipientNameTitleCase(fullName: string): string {
   if (!fullName || typeof fullName !== 'string') return 'Sir / Madam'
@@ -168,29 +200,29 @@ const defaultInvitationTemplates: Record<string, InvitationTemplate> = {
     id: 'internal',
     name: 'Internal College Invitation',
     category: 'Internal College',
-    subject: 'KGRCET hackathon 2027',
+    subject: 'KGRCET Hackathon 2027',
     message: DEFAULT_INVITATION_BODY,
   },
   external: {
     id: 'external',
     name: 'External College Invitation',
     category: 'External College',
-    subject: 'KGRCET hackathon 2027',
-    message: DEFAULT_INVITATION_BODY,
+    subject: 'KGRCET Hackathon 2027',
+    message: DEFAULT_EXTERNAL_INVITATION_BODY,
   },
   sponsor: {
     id: 'sponsor',
     name: 'Sponsor Invitation',
     category: 'Sponsor',
-    subject: 'KGRCET hackathon 2027',
+    subject: 'KGRCET Hackathon 2027',
     message: DEFAULT_INVITATION_BODY,
   },
   custom: {
     id: 'custom',
     name: 'Custom Invitation',
     category: 'Custom',
-    subject: 'KGRCET hackathon 2027',
-    message: DEFAULT_INVITATION_BODY,
+    subject: 'KGRCET Hackathon 2027',
+    message: '',
   },
 }
 
@@ -927,6 +959,16 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
   const handleSelectTemplate = (key: InvitationTemplateKey) => {
     setFormTemplateKey(key)
     setFormError('')
+    if (key === 'custom') {
+      setFormCategory('Custom')
+      setFormRecipientName('')
+      setFormDesignation('')
+      setFormInstitution('')
+      setFormEmail('')
+      setFormSubject('')
+      setFormMessage('')
+      return
+    }
     const tpl = inviteTemplates[key] || defaultInvitationTemplates[key]
     if (tpl) {
       setFormCategory((tpl.category as InvitationCategory) || 'Internal College')
@@ -937,18 +979,26 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
   }
 
   const openCreateInviteModal = (presetKey: InvitationTemplateKey = 'internal') => {
-    const tpl = inviteTemplates[presetKey] || defaultInvitationTemplates[presetKey] || defaultInvitationTemplates.internal
     setFormTemplateKey(presetKey)
     setFormRecipientName('')
     setFormEmail('')
     setFormInstitution('')
-    setFormDesignation(presetKey === 'internal' ? 'Faculty / HOD' : presetKey === 'external' ? 'Principal / Dean' : '')
-    setFormCategory((tpl?.category as InvitationCategory) || 'Internal College')
-    setFormSubject(tpl?.subject || '')
-    const resolvedMsg = (tpl?.message || '').replace(/\{YourName\}/g, session?.name || 'Sai Vaibhav')
-    setFormMessage(resolvedMsg)
     setFormAllowDuplicate(false)
     setFormError('')
+
+    if (presetKey === 'custom') {
+      setFormCategory('Custom')
+      setFormDesignation('')
+      setFormSubject('')
+      setFormMessage('')
+    } else {
+      const tpl = inviteTemplates[presetKey] || defaultInvitationTemplates[presetKey] || defaultInvitationTemplates.internal
+      setFormDesignation(presetKey === 'internal' ? 'Faculty / HOD' : presetKey === 'external' ? 'Principal / Dean' : '')
+      setFormCategory((tpl?.category as InvitationCategory) || 'Internal College')
+      setFormSubject(tpl?.subject || 'KGRCET Hackathon 2027')
+      const resolvedMsg = (tpl?.message || '').replace(/\{YourName\}/g, session?.name || 'Sai Vaibhav')
+      setFormMessage(resolvedMsg)
+    }
     setCreateInviteOpen(true)
   }
 
@@ -2412,7 +2462,7 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
                 placeholder="e.g. Jashanth / Dr. Ramesh Kumar"
                 value={formRecipientName}
                 onChange={(e) => {
-                  setFormRecipientName(e.target.value)
+                  setFormRecipientName(toTitleCase(e.target.value))
                   setFormError('')
                 }}
                 onBlur={() => {
@@ -2550,7 +2600,7 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
               Formatted as a personal 1-to-1 letter: Title Case recipient name, zero marketing table structures, and a single official portal link.
             </div>
             <div style={{ marginTop: '4px', fontSize: '11.5px', color: 'var(--ink-soft)' }}>
-              Subject: <strong>KGRCET hackathon 2027</strong> · Dates: <strong>Feb 19–20, 2027</strong> · Scale: <strong>700+ student innovators</strong>
+              Subject: <strong>KGRCET Hackathon 2027</strong> · Dates: <strong>Feb 19–20, 2027</strong> · Scale: <strong>700+ student innovators</strong>
             </div>
           </div>
 

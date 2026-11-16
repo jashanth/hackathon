@@ -5,7 +5,7 @@ import { mkdirSync } from 'node:fs'
 import { extname, join, normalize, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
-import { initEmailTables, createSmtpTransport, enqueueConfirmationEmails, processEmailQueue, isValidEmail, renderMemberConfirmationEmail, renderInvitationEmail, INVITATION_TEMPLATES, EVENT_DETAILS, sanitizeHeader, sanitizeErrorMessage, getInvitationSender, formatRecipientName } from './email-service.mjs'
+import { initEmailTables, createSmtpTransport, enqueueConfirmationEmails, processEmailQueue, isValidEmail, renderMemberConfirmationEmail, renderInvitationEmail, INVITATION_TEMPLATES, EVENT_DETAILS, sanitizeHeader, sanitizeErrorMessage, getInvitationSender, formatRecipientName, toTitleCase } from './email-service.mjs'
 
 export class RateLimiter {
   constructor({ windowMs, maxRequests }) {
@@ -1508,7 +1508,6 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
           return error(res, 400, 'Invalid admin email address for test email')
         }
         const inviteSender = getInvitationSender({
-          senderName: admin?.name || 'Sai Vaibhav',
           env: process.env,
         })
         const rendered = renderInvitationEmail({
@@ -1588,7 +1587,6 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       `)
 
       const inviteSender = getInvitationSender({
-        senderName: admin?.name || 'Sai Vaibhav',
         env: process.env,
       })
 
@@ -1665,7 +1663,6 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       if (!existing) return error(res, 404, 'invitation not found')
 
       const inviteSender = getInvitationSender({
-        senderName: admin?.name || 'Sai Vaibhav',
         env: process.env,
       })
       const rendered = renderInvitationEmail({

@@ -1003,7 +1003,7 @@ test('admin invitations API: templates, preview, test-send, dispatch, duplicate 
     templateKey: 'external',
   }, cookie)
   assert.equal(prevRes.status, 200)
-  assert.equal(prevRes.body.subject, 'KGRCET hackathon 2027')
+  assert.equal(prevRes.body.subject, 'KGRCET Hackathon 2027')
   assert.match(prevRes.body.html, /Kumar/)
   assert.match(prevRes.body.html, /Cybersecurity (&|&amp;) Ethical Hacking Club/)
   assert.match(prevRes.body.html, /sharing this opportunity with your students|pass it on to students/i)

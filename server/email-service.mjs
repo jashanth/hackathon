@@ -366,6 +366,11 @@ Organized by ${event.organizer}
   return { subject, html, text }
 }
 
+export function toTitleCase(fullName) {
+  if (!fullName || typeof fullName !== 'string') return ''
+  return fullName.toLowerCase().replace(/(^|[^\p{L}\p{N}])(\p{L})/gu, (_, sep, letter) => sep + letter.toUpperCase())
+}
+
 /**
  * Converts a recipient name to Title Case, normalizing honorific prefixes ("Dr.", "Prof.")
  * and initials, avoiding uppercase names.
@@ -448,15 +453,19 @@ export function extractSalutation(fullName, designation = '') {
 
 /**
  * Returns optimized sender information for invitations to minimize promotions tab classification.
- * Uses a personal sender display name (real human organizer) and non-noreply replyTo address.
- * Does NOT set List-Unsubscribe headers.
+ * Sender display name defaults to "CSEH Club - KGRCET" to avoid individual personal sender confusion.
  */
 export function getInvitationSender({
-  senderName = 'Sai Vaibhav',
+  senderName,
   env = process.env,
 } = {}) {
-  const cleanSender = sanitizeHeader(senderName || 'Sai Vaibhav')
-  const fromName = sanitizeHeader(env.SMTP_INVITE_FROM_NAME || `${cleanSender} - KGRCET`)
+  const defaultSenderName = 'CSEH Club - KGRCET'
+  const fromName = sanitizeHeader(
+    env.SMTP_INVITE_FROM_NAME ||
+    (senderName && senderName !== 'Sai Vaibhav' && senderName !== 'Jashanth Gonipati'
+      ? (senderName.includes('KGRCET') ? senderName : `${senderName} - KGRCET`)
+      : defaultSenderName)
+  )
   const fromEmail = sanitizeHeader(
     env.SMTP_INVITE_FROM_EMAIL ||
     env.SMTP_FROM_EMAIL ||
@@ -473,7 +482,7 @@ export function getInvitationSender({
 }
 
 /**
- * Standard body text for official KGRCET hackathon 2027 faculty invitations.
+ * Standard body text for official KGRCET Hackathon 2027 faculty invitations.
  * Formatted as a personal, 1-to-1 letter to avoid Gmail Promotions / Spam filters.
  */
 export const INVITATION_BODY = `Respected {RecipientName},
@@ -498,8 +507,38 @@ Challenge Domains:
 Student teams can find the full details and register directly on our official portal: https://hackathon.cybersec-kgrcet.com/
 
 Warm regards,
-{YourName}
-Cybersecurity & Ethical Hacking Club, KGRCET
+Cybersecurity & Ethical Hacking Club (CSEH)
+In association with Blockchain Club & CSI Student Chapter
+KG Reddy College of Engineering & Technology
+Hyderabad, Telangana, India
+
+If you'd rather not hear from us, reply STOP and we won't write again.`
+
+/**
+ * External college invitation message copy.
+ */
+export const EXTERNAL_INVITATION_BODY = `KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, is pleased to invite your institution to participate in **KGRCET's Hackathon 2027**, a 36-hour national-level hackathon organized by our Cybersecurity & Ethical Hacking Club (CSEH Club), in association with the Blockchain Club and CSI Student Chapter. We welcome students from your institution to be part of this event and showcase their innovation, technical skills, and problem-solving abilities. We are bringing together 700+ student developers and innovators from across the country to solve real-world industry problems. We would greatly appreciate your support in sharing this opportunity with your students.
+
+Event Overview:
+• Dates: February 19–20, 2027 (36 Hours)
+• Venue: KGRCET Campus, Moinabad, Hyderabad
+• Team Size: 2–4 Students
+• Prize Pool: ₹1,00,000 (Provisional)
+
+Challenge Domains:
+1. Generative AI & LLM Applications
+2. Cybersecurity & Digital Forensics
+3. FinTech & Blockchain
+4. HealthTech & Mental Well-being
+5. Open Innovation
+
+Student teams can find the full details and register directly on our official portal: https://hackathon.cybersec-kgrcet.com/
+
+Warm regards,
+Cybersecurity & Ethical Hacking Club (CSEH)
+In association with Blockchain Club & CSI Student Chapter
+KG Reddy College of Engineering & Technology
+Hyderabad, Telangana, India
 
 If you'd rather not hear from us, reply STOP and we won't write again.`
 
@@ -512,28 +551,28 @@ export const INVITATION_TEMPLATES = {
     id: 'internal',
     name: 'Internal College Invitation',
     category: 'Internal College',
-    subject: 'KGRCET hackathon 2027',
+    subject: 'KGRCET Hackathon 2027',
     message: INVITATION_BODY,
   },
   external: {
     id: 'external',
     name: 'External College Invitation',
     category: 'External College',
-    subject: 'KGRCET hackathon 2027',
-    message: INVITATION_BODY,
+    subject: 'KGRCET Hackathon 2027',
+    message: EXTERNAL_INVITATION_BODY,
   },
   sponsor: {
     id: 'sponsor',
     name: 'Sponsor Invitation',
     category: 'Sponsor',
-    subject: 'KGRCET hackathon 2027',
+    subject: 'KGRCET Hackathon 2027',
     message: INVITATION_BODY,
   },
   custom: {
     id: 'custom',
     name: 'Custom Invitation',
     category: 'Custom',
-    subject: 'KGRCET hackathon 2027',
+    subject: 'KGRCET Hackathon 2027',
     message: INVITATION_BODY,
   },
 }
@@ -666,9 +705,10 @@ function renderInvitationHtmlTheme({ subject, paragraphs, formattedRecipient, ef
             <tr>
               <td>
                 <p style="margin: 0 0 6px 0; font-size: 14px; color: #94897c; line-height: 1.6;">Warm regards,</p>
-                <p style="margin: 0 0 4px 0; font-size: 15px; font-weight: 600; color: #f5efe3;">${escapeHtml(effectiveSender)}</p>
-                <p style="margin: 0 0 2px 0; font-size: 13px; color: #dcb872; font-family: 'Geist Mono', monospace;">Cybersecurity &amp; Ethical Hacking Club, KGRCET</p>
-                <p style="margin: 0; font-size: 12px; color: #94897c;">Department of Computer Science and Engineering, KGRCET</p>
+                <p style="margin: 0 0 4px 0; font-size: 15px; font-weight: 600; color: #f5efe3;">Cybersecurity &amp; Ethical Hacking Club (CSEH)</p>
+                <p style="margin: 0 0 2px 0; font-size: 13px; color: #dcb872; font-family: 'Geist Mono', monospace;">In association with Blockchain Club &amp; CSI Student Chapter</p>
+                <p style="margin: 0 0 2px 0; font-size: 13px; color: #c2b9ab;">KG Reddy College of Engineering &amp; Technology</p>
+                <p style="margin: 0; font-size: 12px; color: #94897c;">Hyderabad, Telangana, India</p>
               </td>
             </tr>
           </table>`
@@ -836,7 +876,7 @@ export function renderInvitationEmail({
   const lastName = extractLastName(recipientName)
   const effectiveSender = sanitizeHeader(senderName || 'Sai Vaibhav')
 
-  // Subject line: ensure Title Case names, no ALL CAPS, defaults to 'KGRCET hackathon 2027'
+  // Subject line: ensure Title Case names, no ALL CAPS, defaults to 'KGRCET Hackathon 2027'
   let rawSubject = customSubject ? sanitizeHeader(customSubject) : template.subject
   rawSubject = rawSubject
     .replace(/Dear Prof\.\s*\{LastName\},?/gi, salutation)
@@ -847,18 +887,26 @@ export function renderInvitationEmail({
     .replace(/\{LastName\}/g, lastName)
     .replace(/\{RecipientName\}/g, formattedRecipient)
     .replace(/\{YourName\}/g, effectiveSender)
-    .replace(/\bHACKATHON\b/g, 'hackathon')
+    .replace(/\bhackathon\b/gi, 'Hackathon')
     .replace(/\bNATIONAL LEVEL HACKATHON\b/gi, 'National Hackathon')
 
-  const subject = rawSubject.trim() || 'KGRCET hackathon 2027'
+  const subject = rawSubject.trim() || 'KGRCET Hackathon 2027'
 
   // Body message: resolve placeholders
   let rawBody = (customMessage !== undefined && customMessage !== null ? String(customMessage) : template.message).trim()
 
+  const OFFICIAL_SIGN_OFF = [
+    'Warm regards,',
+    'Cybersecurity & Ethical Hacking Club (CSEH)',
+    'In association with Blockchain Club & CSI Student Chapter',
+    'KG Reddy College of Engineering & Technology',
+    'Hyderabad, Telangana, India',
+  ].join('\n')
+
   // Clean out meta instructions if prompt was pasted directly into the body
   rawBody = rawBody
     .replace(/and then only put these:\s*/gi, '')
-    .replace(/followed by Warm regards as usual.*$/gis, 'Warm regards,\n{YourName}\nCybersecurity & Ethical Hacking Club, KGRCET')
+    .replace(/followed by Warm regards as usual.*$/gis, OFFICIAL_SIGN_OFF)
     .replace(/Fix Name Capitalization:.*$/gim, '')
 
   rawBody = rawBody
@@ -870,7 +918,7 @@ export function renderInvitationEmail({
     .replace(/\{LastName\}/g, lastName)
     .replace(/\{RecipientName\}/g, formattedRecipient)
     .replace(/\{YourName\}/g, effectiveSender)
-    .replace(/\bHACKATHON\b/g, 'hackathon')
+    .replace(/\bHACKATHON\b/g, 'Hackathon')
 
   // Check what facts are present
   const hasLink = rawBody.includes('https://hackathon.cybersec-kgrcet.com')
@@ -915,10 +963,12 @@ export function renderInvitationEmail({
     )
   }
 
-  // 6. Ensure closing sign-off if missing
-  const hasSignOff = paragraphs.some((p) => /^(?:warm\s+)?regards,/i.test(p))
-  if (!hasSignOff) {
-    paragraphs.push(`Warm regards,\n${effectiveSender}\nCybersecurity & Ethical Hacking Club, KGRCET`)
+  // 6. Ensure closing sign-off: always use official institutional sign-off without personal names
+  const signOffIdx = paragraphs.findIndex((p) => /^(?:warm\s+)?regards,?/i.test(p))
+  if (signOffIdx !== -1) {
+    paragraphs[signOffIdx] = OFFICIAL_SIGN_OFF
+  } else {
+    paragraphs.push(OFFICIAL_SIGN_OFF)
   }
 
   // 7. Ensure plain STOP opt-out line at the very end
