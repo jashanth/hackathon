@@ -487,7 +487,7 @@ export function getInvitationSender({
  */
 export const INVITATION_BODY = `Respected {RecipientName},
 
-On behalf of the Department of Computer Science and Engineering at KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, I am writing to invite your students to participate in KGRCET's Hackathon 2027, a 36-hour national-level hackathon organized by our CSEH Club in association with the Blockchain Club and CSI Student Chapter.
+On behalf of the Department of Computer Science and Engineering at KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, we cordially invite your students to participate in **KGRCET's Hackathon 2027**, a 36-hour national-level hackathon organized by our Cybersecurity & Ethical Hacking Club (CSEH Club), in association with the Blockchain Club and CSI Student Chapter.
 
 We are bringing together 700+ student developers and innovators from across the country to solve real-world industry problems. We would greatly appreciate your support in sharing this opportunity with your students.
 
@@ -543,6 +543,38 @@ Hyderabad, Telangana, India
 If you'd rather not hear from us, reply STOP and we won't write again.`
 
 /**
+ * Custom / Dignitary (Principal / Director / Others) invitation message copy.
+ */
+export const CUSTOM_INVITATION_BODY = `On behalf of the Department of Computer Science and Engineering at KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, we cordially invite you to be a part of **KGRCET's Hackathon 2027**, a 36-hour national-level hackathon organized by our Cybersecurity & Ethical Hacking Club (CSEH Club), in association with the Blockchain Club and CSI Student Chapter.
+
+Your presence would be a great honour and would add immense value to this event as we bring together innovative minds to collaborate, build, and solve real-world challenges.
+
+We are bringing together 700+ student developers and innovators from across the country to solve real-world industry problems. We would greatly appreciate your support in sharing this opportunity with your students.
+
+Event Overview:
+• Dates: February 19–20, 2027 (36 Hours)
+• Venue: KGRCET Campus, Moinabad, Hyderabad
+• Team Size: 2–4 Students
+• Prize Pool: ₹1,00,000 (Provisional)
+
+Challenge Domains:
+1. Generative AI & LLM Applications
+2. Cybersecurity & Digital Forensics
+3. FinTech & Blockchain
+4. HealthTech & Mental Well-being
+5. Open Innovation
+
+Student teams can find the full details and register directly on our official portal: https://hackathon.cybersec-kgrcet.com/
+
+Warm regards,
+Cybersecurity & Ethical Hacking Club (CSEH)
+In association with Blockchain Club & CSI Student Chapter
+KG Reddy College of Engineering & Technology
+Hyderabad, Telangana, India
+
+If you'd rather not hear from us, reply STOP and we won't write again.`
+
+/**
  * Predefined invitation templates for different dignitary and partner categories.
  * All templates are drafted as personal single-column letters without marketing buzzwords or ALL CAPS.
  */
@@ -570,10 +602,10 @@ export const INVITATION_TEMPLATES = {
   },
   custom: {
     id: 'custom',
-    name: 'Custom Invitation',
+    name: 'Custom (Principal / Director / Others)',
     category: 'Custom',
     subject: 'KGRCET Hackathon 2027',
-    message: INVITATION_BODY,
+    message: CUSTOM_INVITATION_BODY,
   },
 }
 

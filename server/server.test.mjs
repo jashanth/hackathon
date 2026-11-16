@@ -993,6 +993,8 @@ test('admin invitations API: templates, preview, test-send, dispatch, duplicate 
   assert.ok(tplRes.body.templates.external)
   assert.ok(tplRes.body.templates.sponsor)
   assert.ok(tplRes.body.templates.custom)
+  assert.match(tplRes.body.templates.custom.name, /Principal \/ Director \/ Others/)
+  assert.match(tplRes.body.templates.custom.message, /Your presence would be a great honour and would add immense value/)
 
   // 2. Render live preview
   const prevRes = await f.call('POST', '/api/admin/invitations/preview', {

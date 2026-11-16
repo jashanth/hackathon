@@ -107,7 +107,7 @@ export type InvitationTemplate = {
 
 const DEFAULT_INVITATION_BODY = `Respected {RecipientName},
 
-On behalf of the Department of Computer Science and Engineering at KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, I am writing to invite your students to participate in KGRCET's Hackathon 2027, a 36-hour national-level hackathon organized by our CSEH Club in association with the Blockchain Club and CSI Student Chapter.
+On behalf of the Department of Computer Science and Engineering at KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, we cordially invite your students to participate in **KGRCET's Hackathon 2027**, a 36-hour national-level hackathon organized by our Cybersecurity & Ethical Hacking Club (CSEH Club), in association with the Blockchain Club and CSI Student Chapter.
 
 We are bringing together 700+ student developers and innovators from across the country to solve real-world industry problems. We would greatly appreciate your support in sharing this opportunity with your students.
 
@@ -135,6 +135,35 @@ Hyderabad, Telangana, India
 If you'd rather not hear from us, reply STOP and we won't write again.`
 
 const DEFAULT_EXTERNAL_INVITATION_BODY = `KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, is pleased to invite your institution to participate in **KGRCET's Hackathon 2027**, a 36-hour national-level hackathon organized by our Cybersecurity & Ethical Hacking Club (CSEH Club), in association with the Blockchain Club and CSI Student Chapter. We welcome students from your institution to be part of this event and showcase their innovation, technical skills, and problem-solving abilities. We are bringing together 700+ student developers and innovators from across the country to solve real-world industry problems. We would greatly appreciate your support in sharing this opportunity with your students.
+
+Event Overview:
+• Dates: February 19–20, 2027 (36 Hours)
+• Venue: KGRCET Campus, Moinabad, Hyderabad
+• Team Size: 2–4 Students
+• Prize Pool: ₹1,00,000 (Provisional)
+
+Challenge Domains:
+1. Generative AI & LLM Applications
+2. Cybersecurity & Digital Forensics
+3. FinTech & Blockchain
+4. HealthTech & Mental Well-being
+5. Open Innovation
+
+Student teams can find the full details and register directly on our official portal: https://hackathon.cybersec-kgrcet.com/
+
+Warm regards,
+Cybersecurity & Ethical Hacking Club (CSEH)
+In association with Blockchain Club & CSI Student Chapter
+KG Reddy College of Engineering & Technology
+Hyderabad, Telangana, India
+
+If you'd rather not hear from us, reply STOP and we won't write again.`
+
+const DEFAULT_CUSTOM_INVITATION_BODY = `On behalf of the Department of Computer Science and Engineering at KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, we cordially invite you to be a part of **KGRCET's Hackathon 2027**, a 36-hour national-level hackathon organized by our Cybersecurity & Ethical Hacking Club (CSEH Club), in association with the Blockchain Club and CSI Student Chapter.
+
+Your presence would be a great honour and would add immense value to this event as we bring together innovative minds to collaborate, build, and solve real-world challenges.
+
+We are bringing together 700+ student developers and innovators from across the country to solve real-world industry problems. We would greatly appreciate your support in sharing this opportunity with your students.
 
 Event Overview:
 • Dates: February 19–20, 2027 (36 Hours)
@@ -219,10 +248,10 @@ const defaultInvitationTemplates: Record<string, InvitationTemplate> = {
   },
   custom: {
     id: 'custom',
-    name: 'Custom Invitation',
+    name: 'Custom (Principal / Director / Others)',
     category: 'Custom',
     subject: 'KGRCET Hackathon 2027',
-    message: '',
+    message: DEFAULT_CUSTOM_INVITATION_BODY,
   },
 }
 
@@ -938,7 +967,10 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
 
   useEffect(() => {
     if (createInviteOpen) {
-      if (!createInviteDialog.current?.open) createInviteDialog.current?.showModal()
+      if (!createInviteDialog.current?.open) {
+        createInviteDialog.current?.showModal()
+        createInviteDialog.current?.focus()
+      }
     } else {
       if (createInviteDialog.current?.open) createInviteDialog.current?.close()
     }
@@ -959,46 +991,41 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
   const handleSelectTemplate = (key: InvitationTemplateKey) => {
     setFormTemplateKey(key)
     setFormError('')
-    if (key === 'custom') {
-      setFormCategory('Custom')
-      setFormRecipientName('')
-      setFormDesignation('')
-      setFormInstitution('')
-      setFormEmail('')
-      setFormSubject('')
-      setFormMessage('')
-      return
-    }
     const tpl = inviteTemplates[key] || defaultInvitationTemplates[key]
     if (tpl) {
-      setFormCategory((tpl.category as InvitationCategory) || 'Internal College')
+      setFormCategory((tpl.category as InvitationCategory) || 'Custom')
       setFormSubject(tpl.subject)
+      if (key === 'custom') {
+        if (!formDesignation || formDesignation === 'Faculty / HOD') {
+          setFormDesignation('Principal / Director')
+        }
+      }
       const resolvedMsg = tpl.message.replace(/\{YourName\}/g, session?.name || 'Sai Vaibhav')
       setFormMessage(resolvedMsg)
     }
   }
 
   const openCreateInviteModal = (presetKey: InvitationTemplateKey = 'internal') => {
+    const tpl = inviteTemplates[presetKey] || defaultInvitationTemplates[presetKey] || defaultInvitationTemplates.internal
     setFormTemplateKey(presetKey)
     setFormRecipientName('')
     setFormEmail('')
     setFormInstitution('')
+    setFormDesignation(
+      presetKey === 'internal'
+        ? 'Faculty / HOD'
+        : presetKey === 'external'
+          ? 'Principal / Dean'
+          : presetKey === 'custom'
+            ? 'Principal / Director'
+            : ''
+    )
+    setFormCategory((tpl?.category as InvitationCategory) || 'Internal College')
+    setFormSubject(tpl?.subject || 'KGRCET Hackathon 2027')
+    const resolvedMsg = (tpl?.message || '').replace(/\{YourName\}/g, session?.name || 'Sai Vaibhav')
+    setFormMessage(resolvedMsg)
     setFormAllowDuplicate(false)
     setFormError('')
-
-    if (presetKey === 'custom') {
-      setFormCategory('Custom')
-      setFormDesignation('')
-      setFormSubject('')
-      setFormMessage('')
-    } else {
-      const tpl = inviteTemplates[presetKey] || defaultInvitationTemplates[presetKey] || defaultInvitationTemplates.internal
-      setFormDesignation(presetKey === 'internal' ? 'Faculty / HOD' : presetKey === 'external' ? 'Principal / Dean' : '')
-      setFormCategory((tpl?.category as InvitationCategory) || 'Internal College')
-      setFormSubject(tpl?.subject || 'KGRCET Hackathon 2027')
-      const resolvedMsg = (tpl?.message || '').replace(/\{YourName\}/g, session?.name || 'Sai Vaibhav')
-      setFormMessage(resolvedMsg)
-    }
     setCreateInviteOpen(true)
   }
 
@@ -2403,10 +2430,8 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
       <dialog
         ref={createInviteDialog}
         className="invite-dialog"
+        tabIndex={-1}
         onClose={() => setCreateInviteOpen(false)}
-        onClick={(e) => {
-          if (e.target === createInviteDialog.current) setCreateInviteOpen(false)
-        }}
       >
         <header className="ps-dialog-header">
           <div>
@@ -2443,7 +2468,7 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
               <option value="internal">1. Internal College Invitation</option>
               <option value="external">2. External College Invitation (Other Colleges)</option>
               <option value="sponsor">3. Sponsor Invitation</option>
-              <option value="custom">4. Custom Invitation</option>
+              <option value="custom">4. Custom (Principal / Director / Others)</option>
             </select>
           </div>
 

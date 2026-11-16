@@ -176,7 +176,7 @@ test('renderInvitationEmail generates personal letter bypassing promotions tab',
 
   // Body content: Department, Clubs, Scales, Overviews
   assert.match(email.html, /Department of Computer Science and Engineering at KG Reddy College of Engineering &amp; Technology \(KGRCET\)/)
-  assert.match(email.html, /36-hour national-level hackathon organized by our CSEH Club in association with the Blockchain Club and CSI Student Chapter/)
+  assert.match(email.html, /we cordially invite your students to participate in <strong style="color: #ffffff;">KGRCET(?:'|&#39;)s Hackathon 2027<\/strong>, a 36-hour national-level hackathon organized by our Cybersecurity &amp; Ethical Hacking Club \(CSEH Club\)/)
   assert.match(email.html, /700\+ student developers and innovators/)
   assert.match(email.html, /sharing this opportunity with your students/)
 
@@ -216,6 +216,18 @@ test('renderInvitationEmail generates personal letter bypassing promotions tab',
   assert.match(email.html, /kgrcet-logo\.png/i)
   assert.match(email.html, /✦ OFFICIAL INVITATION/i)
   assert.match(email.html, /OFFICIAL HACKATHON PORTAL ↗/i)
+
+  // Verify Custom (Principal / Director / Others) template
+  assert.equal(INVITATION_TEMPLATES.custom.name, 'Custom (Principal / Director / Others)')
+  assert.match(INVITATION_TEMPLATES.custom.message, /Your presence would be a great honour and would add immense value/i)
+  const customRender = renderInvitationEmail({
+    recipientName: 'Dr. Director',
+    templateKey: 'custom',
+  })
+  assert.equal(customRender.subject, 'KGRCET Hackathon 2027')
+  assert.match(customRender.text, /Respected Dr\. Director,/)
+  assert.match(customRender.text, /Your presence would be a great honour and would add immense value/)
+  assert.match(customRender.html, /Cybersecurity &amp; Ethical Hacking Club \(CSEH\)/)
 })
 
 test('outbox queue enqueues all members and processes deliveries sequentially', async (t) => {
