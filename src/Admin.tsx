@@ -105,48 +105,92 @@ export type InvitationTemplate = {
   message: string
 }
 
+const DEFAULT_INVITATION_BODY = `Respected {RecipientName},
+
+On behalf of the Department of Computer Science and Engineering at KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, I am writing to invite your students to participate in KGRCET's Hackathon 2027, a 36-hour national-level hackathon organized by our CSEH Club in association with the Blockchain Club and CSI Student Chapter.
+
+We are bringing together 700+ student developers and innovators from across the country to solve real-world industry problems. We would greatly appreciate your support in sharing this opportunity with your students.
+
+Event Overview:
+• Dates: February 19–20, 2027 (36 Hours)
+• Venue: KGRCET Campus, Moinabad, Hyderabad
+• Team Size: 2–4 Students
+• Prize Pool: ₹1,00,000 (Provisional)
+
+Challenge Domains:
+1. Generative AI & LLM Applications
+2. Cybersecurity & Digital Forensics
+3. FinTech & Blockchain
+4. HealthTech & Mental Well-being
+5. Open Innovation
+
+Student teams can find the full details and register directly on our official portal: https://hackathon.cybersec-kgrcet.com/
+
+Warm regards,
+{YourName}
+Cybersecurity & Ethical Hacking Club, KGRCET
+
+If you'd rather not hear from us, reply STOP and we won't write again.`
+
+function formatRecipientNameTitleCase(fullName: string): string {
+  if (!fullName || typeof fullName !== 'string') return 'Sir / Madam'
+  let trimmed = fullName.trim()
+  if (!trimmed || /^(?:sir|madam|sir\s*\/\s*madam|to whom it may concern|respected sir|respected madam|all)$/i.test(trimmed)) {
+    return 'Sir / Madam'
+  }
+  trimmed = trimmed.replace(/^(?:respected|dear)\s+/i, '').trim()
+  if (!trimmed) return 'Sir / Madam'
+  const tokens = trimmed.split(/\s+/).filter(Boolean)
+  return tokens
+    .map((token) => {
+      const lower = token.toLowerCase()
+      if (lower === 'dr' || lower === 'dr.') return 'Dr.'
+      if (lower === 'prof' || lower === 'prof.' || lower === 'professor') return 'Prof.'
+      if (lower === 'mr' || lower === 'mr.') return 'Mr.'
+      if (lower === 'ms' || lower === 'ms.') return 'Ms.'
+      if (lower === 'mrs' || lower === 'mrs.') return 'Mrs.'
+      if (/^[a-zA-Z]\.?$/.test(token)) {
+        return token.charAt(0).toUpperCase() + '.'
+      }
+      if (token.includes('-')) {
+        return token
+          .split('-')
+          .map((p) => (p ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase() : ''))
+          .join('-')
+      }
+      return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase()
+    })
+    .join(' ')
+}
+
 const defaultInvitationTemplates: Record<string, InvitationTemplate> = {
   internal: {
     id: 'internal',
     name: 'Internal College Invitation',
     category: 'Internal College',
-    subject: "Invitation to KGRCET's HACKATHON 2027 — 36-Hour National Level Hackathon",
-    message: "On behalf of the Department of Computer Science and Engineering, KG Reddy College of Engineering & Technology (KGRCET), Hyderabad, we are delighted to invite you to be a part of **KGRCET's HACKATHON 2027**, a 36-hour national-level hackathon bringing together student innovators, developers and aspiring entrepreneurs from across the country. We look forward to your encouragement, support and participation in making this event a grand success.",
+    subject: 'KGRCET hackathon 2027',
+    message: DEFAULT_INVITATION_BODY,
   },
   external: {
     id: 'external',
     name: 'External College Invitation',
     category: 'External College',
-    subject: 'KGRCET Hackathon 2027 (Feb 19-20) - could you share with your students?',
-    message: `Dear Prof. {LastName},
-
-I'm {YourName}, an organizer with the Cybersecurity & Ethical Hacking Club at KG Reddy College of Engineering & Technology, Hyderabad. We're hosting KGRCET's Hackathon 2027 on February 19-20, 2027, a 36-hour hackathon for teams of 2-4 students, and I'd be grateful if you could pass it on to students in your department.
-
-Registration and details are here:
-https://hackathon.cybersec-kgrcet.com/register
-
-If you have any questions, just reply to this email.
-
-Regards,
-{YourName}
-Cybersecurity & Ethical Hacking Club, KGRCET
-cseh@kgrcet.edu.in
-
-If you'd rather not hear from us, reply STOP and we won't write again.`,
+    subject: 'KGRCET hackathon 2027',
+    message: DEFAULT_INVITATION_BODY,
   },
   sponsor: {
     id: 'sponsor',
     name: 'Sponsor Invitation',
     category: 'Sponsor',
-    subject: "Sponsorship & Brand Partnership Invitation: KGRCET's HACKATHON 2027",
-    message: "We are thrilled to invite your esteemed brand to partner as an official sponsor for KGRCET's HACKATHON 2027, Hyderabad's flagship 36-hour national technology sprint happening on February 19–20, 2027. With 700–1000+ verified student developers, engineers, and researchers building live across Autonomous AI, Cybersecurity, FinTech, and HealthTech, your partnership provides direct brand visibility, talent recruitment access, and community leadership.",
+    subject: 'KGRCET hackathon 2027',
+    message: DEFAULT_INVITATION_BODY,
   },
   custom: {
     id: 'custom',
     name: 'Custom Invitation',
     category: 'Custom',
-    subject: "Special Invitation: KGRCET's HACKATHON 2027",
-    message: "You are cordially invited to participate and collaborate with KGRCET's HACKATHON 2027, a premier 36-Hour National Level Hackathon on February 19–20, 2027 at KG Reddy College of Engineering & Technology, Hyderabad.",
+    subject: 'KGRCET hackathon 2027',
+    message: DEFAULT_INVITATION_BODY,
   },
 }
 
@@ -914,7 +958,7 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
     try {
       await api('invitations', 'POST', {
         isTest: true,
-        recipientName: formRecipientName.trim() || session.name,
+        recipientName: formatRecipientNameTitleCase(formRecipientName.trim() || session.name),
         designation: formDesignation.trim() || 'Administrator',
         institution: formInstitution.trim() || 'KG Reddy College of Engineering & Technology',
         category: formCategory,
@@ -946,7 +990,7 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
     setFormError('')
     try {
       await api('invitations', 'POST', {
-        recipientName: formRecipientName.trim() || 'Sir / Madam',
+        recipientName: formatRecipientNameTitleCase(formRecipientName.trim() || 'Sir / Madam'),
         email: formEmail.trim(),
         institution: formInstitution.trim() || 'KG Reddy College of Engineering & Technology',
         designation: formDesignation.trim() || 'Academic Dignitary',
@@ -2355,16 +2399,26 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
             <div className="form-group">
-              <label htmlFor="inv-name-input">Recipient Name *</label>
+              <label htmlFor="inv-name-input">
+                Recipient Name *
+                <small style={{ color: 'var(--ink-soft)', marginLeft: '8px', fontWeight: 400 }}>
+                  (Auto-capitalized to Title Case, e.g. Jashanth)
+                </small>
+              </label>
               <input
                 id="inv-name-input"
                 className="form-input"
                 type="text"
-                placeholder="e.g. Dr. K. S. Rao / Shri Rajesh Sharma"
+                placeholder="e.g. Jashanth / Dr. Ramesh Kumar"
                 value={formRecipientName}
                 onChange={(e) => {
                   setFormRecipientName(e.target.value)
                   setFormError('')
+                }}
+                onBlur={() => {
+                  if (formRecipientName.trim()) {
+                    setFormRecipientName(formatRecipientNameTitleCase(formRecipientName))
+                  }
                 }}
                 required
               />
@@ -2487,16 +2541,16 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
             />
           </div>
 
-          {/* Differentiator & Attachment Callout */}
+          {/* Deliverability & Inbox Placement Callout */}
           <div className="invite-feature-callout">
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--gold)', fontWeight: 600, marginBottom: '4px' }}>
-              <FileText size={14} /> Official Brochure Specification Included
+              <FileText size={14} /> Inbox Deliverability (Promotions Filter Proof)
             </div>
             <div>
-              <strong>✦ The Vision Included:</strong> Connecting students with real-world industry challenges and creating opportunities for promising solutions to grow beyond the hackathon.
+              Formatted as a personal 1-to-1 letter: Title Case recipient name, zero marketing table structures, and a single official portal link.
             </div>
             <div style={{ marginTop: '4px', fontSize: '11.5px', color: 'var(--ink-soft)' }}>
-              Projected Scale: <strong>700–1000 builders</strong> · Dates: <strong>Feb 19–20, 2027</strong> · Venue: <strong>KGRCET Hyderabad</strong>
+              Subject: <strong>KGRCET hackathon 2027</strong> · Dates: <strong>Feb 19–20, 2027</strong> · Scale: <strong>700+ student innovators</strong>
             </div>
           </div>
 

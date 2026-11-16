@@ -5,7 +5,7 @@ import { mkdirSync } from 'node:fs'
 import { extname, join, normalize, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
-import { initEmailTables, createSmtpTransport, enqueueConfirmationEmails, processEmailQueue, isValidEmail, renderMemberConfirmationEmail, renderInvitationEmail, INVITATION_TEMPLATES, EVENT_DETAILS, sanitizeHeader, sanitizeErrorMessage } from './email-service.mjs'
+import { initEmailTables, createSmtpTransport, enqueueConfirmationEmails, processEmailQueue, isValidEmail, renderMemberConfirmationEmail, renderInvitationEmail, INVITATION_TEMPLATES, EVENT_DETAILS, sanitizeHeader, sanitizeErrorMessage, getInvitationSender, formatRecipientName } from './email-service.mjs'
 
 export class RateLimiter {
   constructor({ windowMs, maxRequests }) {
@@ -1492,7 +1492,8 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       const input = await readJsonBody(req, 100 * 1024)
       const now = Date.now()
       const isTest = Boolean(input?.isTest)
-      const recipientName = sanitizeInputText(input?.recipientName || 'Sir / Madam', 120)
+      const rawRecipientName = sanitizeInputText(input?.recipientName || 'Sir / Madam', 120)
+      const recipientName = formatRecipientName(rawRecipientName)
       const designation = sanitizeInputText(input?.designation || 'Academic Dignitary', 120)
       const institution = sanitizeInputText(input?.institution || 'KG Reddy College of Engineering & Technology', 200)
       const category = sanitizeInputText(input?.category || 'Internal College', 50)
@@ -1506,6 +1507,10 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         if (!isValidEmail(testTarget)) {
           return error(res, 400, 'Invalid admin email address for test email')
         }
+        const inviteSender = getInvitationSender({
+          senderName: admin?.name || 'Sai Vaibhav',
+          env: process.env,
+        })
         const rendered = renderInvitationEmail({
           recipientName: recipientName || admin.name,
           designation,
@@ -1518,9 +1523,9 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         })
         try {
           await mailer.sendMail({
-            from: mailer.from,
-            to: `"${sanitizeHeader(recipientName || admin.name || 'Invited Dignitary')}" <${testTarget}>`,
-            replyTo: EVENT_DETAILS.contactEmail || 'cseh@kgrcet.edu.in',
+            from: inviteSender.from,
+            to: `"${sanitizeHeader(rendered.recipientName || 'Invited Dignitary')}" <${testTarget}>`,
+            replyTo: inviteSender.replyTo,
             subject: rendered.subject.startsWith('[TEST]') ? rendered.subject : `[TEST] ${rendered.subject}`,
             html: rendered.html,
             text: rendered.text,
@@ -1582,6 +1587,11 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
 
+      const inviteSender = getInvitationSender({
+        senderName: admin?.name || 'Sai Vaibhav',
+        env: process.env,
+      })
+
       for (const targetEmail of emailList) {
         const id = randomBytes(16).toString('hex')
         const rendered = renderInvitationEmail({
@@ -1599,9 +1609,9 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
         let lastError = null
         try {
           await mailer.sendMail({
-            from: mailer.from,
-            to: `"${sanitizeHeader(recipientName || 'Invited Dignitary')}" <${targetEmail}>`,
-            replyTo: EVENT_DETAILS.contactEmail || 'cseh@kgrcet.edu.in',
+            from: inviteSender.from,
+            to: `"${sanitizeHeader(rendered.recipientName || 'Invited Dignitary')}" <${targetEmail}>`,
+            replyTo: inviteSender.replyTo,
             subject: rendered.subject,
             html: rendered.html,
             text: rendered.text,
@@ -1613,7 +1623,7 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
 
         insertStmt.run(
           id,
-          recipientName,
+          rendered.recipientName || recipientName,
           targetEmail,
           institution,
           designation,
@@ -1654,6 +1664,10 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       const existing = db.prepare('SELECT * FROM invitations WHERE id = ?').get(id)
       if (!existing) return error(res, 404, 'invitation not found')
 
+      const inviteSender = getInvitationSender({
+        senderName: admin?.name || 'Sai Vaibhav',
+        env: process.env,
+      })
       const rendered = renderInvitationEmail({
         recipientName: existing.recipient_name,
         designation: existing.designation,
@@ -1670,9 +1684,9 @@ export function createApp({ dbPath = databasePath, adminAccounts, adminAccountsJ
       let lastError = null
       try {
         await mailer.sendMail({
-          from: mailer.from,
-          to: `"${sanitizeHeader(existing.recipient_name || 'Invited Dignitary')}" <${existing.email}>`,
-          replyTo: EVENT_DETAILS.contactEmail || 'cseh@kgrcet.edu.in',
+          from: inviteSender.from,
+          to: `"${sanitizeHeader(rendered.recipientName || existing.recipient_name || 'Invited Dignitary')}" <${existing.email}>`,
+          replyTo: inviteSender.replyTo,
           subject: rendered.subject,
           html: rendered.html,
           text: rendered.text,

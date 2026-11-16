@@ -13,6 +13,10 @@ import {
   initEmailTables,
   enqueueConfirmationEmails,
   processEmailQueue,
+  formatRecipientName,
+  extractSalutation,
+  renderInvitationEmail,
+  INVITATION_TEMPLATES,
 } from './email-service.mjs'
 import { createApp, hashPassword, ALLOWED_ADMINS } from './server.mjs'
 
@@ -126,6 +130,79 @@ test('renderMemberConfirmationEmail generates personalized branding for leader a
   assert.match(memberMail.html, /Greetings, Member Alice/)
   assert.match(memberMail.html, /TEAM MEMBER/)
   assert.match(memberMail.html, /CyberKnights/)
+})
+
+test('renderInvitationEmail generates personal letter bypassing promotions tab', () => {
+  // Test Name Title Case formatting
+  assert.equal(formatRecipientName('JASHANTH'), 'Jashanth')
+  assert.equal(formatRecipientName('jashanth'), 'Jashanth')
+  assert.equal(formatRecipientName('DR. RAMESH KUMAR'), 'Dr. Ramesh Kumar')
+  assert.equal(formatRecipientName('PROF. ANITHA RAO'), 'Prof. Anitha Rao')
+  assert.equal(formatRecipientName(''), 'Sir / Madam')
+  assert.equal(formatRecipientName('Sir / Madam'), 'Sir / Madam')
+
+  // Test Salutation
+  assert.equal(extractSalutation('JASHANTH'), 'Respected Jashanth,')
+  assert.equal(extractSalutation('Dr. Ramesh Kumar'), 'Respected Dr. Ramesh Kumar,')
+  assert.equal(extractSalutation('Sir / Madam'), 'Respected Sir / Madam,')
+
+  // Render Invitation Email with ALL CAPS input
+  const email = renderInvitationEmail({
+    recipientName: 'JASHANTH',
+    senderName: 'Sai Vaibhav',
+  })
+
+  // Subject line checks: must be sentence/lower case 'KGRCET hackathon 2027', no ALL CAPS
+  assert.equal(email.subject, 'KGRCET hackathon 2027')
+  assert.doesNotMatch(email.subject, /HACKATHON/)
+  assert.doesNotMatch(email.subject, /—/)
+  assert.doesNotMatch(email.subject, /Invitation:/)
+
+  // Body dynamic variable: Title Case 'Respected Jashanth,'
+  assert.match(email.text, /Respected Jashanth,/)
+  assert.doesNotMatch(email.text, /Respected JASHANTH/)
+  assert.match(email.html, /Respected Jashanth,/)
+  assert.doesNotMatch(email.html, /Respected JASHANTH/)
+
+  // Body content: Department, Clubs, Scales, Overviews
+  assert.match(email.html, /Department of Computer Science and Engineering at KG Reddy College of Engineering &amp; Technology \(KGRCET\)/)
+  assert.match(email.html, /36-hour national-level hackathon organized by our CSEH Club in association with the Blockchain Club and CSI Student Chapter/)
+  assert.match(email.html, /700\+ student developers and innovators/)
+  assert.match(email.html, /sharing this opportunity with your students/)
+
+  // Challenge Domains & Event Overview structured semantic lists
+  assert.match(email.html, /<strong>Event Overview:<\/strong>/)
+  assert.match(email.html, /<strong>Dates:<\/strong> February 19–20, 2027 \(36 Hours\)/)
+  assert.match(email.html, /<strong>Venue:<\/strong> KGRCET Campus, Moinabad, Hyderabad/)
+  assert.match(email.html, /<strong>Team Size:<\/strong> 2–4 Students/)
+  assert.match(email.html, /<strong>Prize Pool:<\/strong> ₹1,00,000 \(Provisional\)/)
+
+  assert.match(email.html, /<strong>Challenge Domains:<\/strong>/)
+  assert.match(email.html, /<ol style="margin: 0 0 16px 0; padding-left: 20px;">/)
+  assert.match(email.html, /<li style="margin-bottom: 4px;">Generative AI &amp; LLM Applications<\/li>/)
+  assert.match(email.html, /<li style="margin-bottom: 4px;">Cybersecurity &amp; Digital Forensics<\/li>/)
+  assert.match(email.html, /<li style="margin-bottom: 4px;">FinTech &amp; Blockchain<\/li>/)
+  assert.match(email.html, /<li style="margin-bottom: 4px;">HealthTech &amp; Mental Well-being<\/li>/)
+  assert.match(email.html, /<li style="margin-bottom: 4px;">Open Innovation<\/li>/)
+
+  // Official portal link (single URL, plain and semantic)
+  assert.match(email.html, /https:\/\/hackathon\.cybersec-kgrcet\.com\//)
+  assert.doesNotMatch(email.html, /https:\/\/hackathon\.cybersec-kgrcet\.com\/register/)
+
+  // Sign-off: Warm regards
+  assert.match(email.html, /Warm regards,<br>Sai Vaibhav<br>Cybersecurity &amp; Ethical Hacking Club, KGRCET/)
+  assert.match(email.text, /Warm regards,\nSai Vaibhav\nCybersecurity & Ethical Hacking Club, KGRCET/)
+
+  // Anti-spam opt-out
+  assert.match(email.html, /reply STOP and we won&#39;t write again/)
+  assert.match(email.text, /reply STOP and we won't write again/)
+
+  // Deliverability protections: no tables, no promotional headers, no logo image
+  assert.doesNotMatch(email.html, /<table/i)
+  assert.doesNotMatch(email.html, /<img/i)
+  assert.doesNotMatch(email.html, /✦/i)
+  assert.doesNotMatch(email.html, /OFFICIAL EVENT INVITATION/i)
+  assert.doesNotMatch(email.html, /REGISTER STUDENT TEAMS/i)
 })
 
 test('outbox queue enqueues all members and processes deliveries sequentially', async (t) => {
