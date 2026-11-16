@@ -543,18 +543,20 @@ INVITATION_TEMPLATES.official = INVITATION_TEMPLATES.internal
 INVITATION_TEMPLATES.college = INVITATION_TEMPLATES.external
 
 /**
- * Renders a minimal, single-column HTML letter without tables, badges, boxed cards, images, or tracking pixels.
- * Uses semantic elements and clean typography so that mail clients treat it as personal 1-to-1 correspondence.
+ * Renders the official dark celestial gold theme around the invitation letter.
+ * Features Obsidian black canvas, celestial gold foil bar, grand Cormorant header,
+ * college logo plate, official invitation pill, styled event overview & domain plaques,
+ * official portal CTA button, and formal institutional footer.
  */
-function renderInvitationHtmlLetter({ subject, paragraphs, effectiveSender }) {
-  const paragraphsHtml = paragraphs
+function renderInvitationHtmlTheme({ subject, paragraphs, formattedRecipient, effectiveSender, event = EVENT_DETAILS }) {
+  const contentHtml = paragraphs
     .map((p) => {
       const trimmed = p.trim()
       if (!trimmed) return ''
 
       // Salutation line
       if (/^(?:respected|dear)\s+/i.test(trimmed) && trimmed.split('\n').length <= 2) {
-        return `<p style="margin: 0 0 16px 0;">${escapeHtml(trimmed)}</p>`
+        return `<h2 style="margin: 0 0 18px 0; font-family: 'Cormorant', Garamond, 'Times New Roman', Georgia, serif; font-size: 26px; font-weight: 400; color: #ffffff; letter-spacing: 0.01em; line-height: 1.2;">${escapeHtml(trimmed)}</h2>`
       }
 
       const lines = trimmed.split('\n').map((l) => l.trim()).filter(Boolean)
@@ -563,73 +565,248 @@ function renderInvitationHtmlLetter({ subject, paragraphs, effectiveSender }) {
       if (lines.length > 1 && lines.slice(1).every((l) => /^\d+[\.)]\s*/.test(l))) {
         const header = lines[0]
         const items = lines.slice(1)
-        const lis = items
-          .map((item) => {
+        const rows = items
+          .map((item, idx) => {
+            const num = (idx + 1).toString().padStart(2, '0')
             const content = escapeHtml(item.replace(/^\d+[\.)]\s*/, ''))
-            return `<li style="margin-bottom: 4px;">${content}</li>`
+            const isLast = idx === items.length - 1
+            return `<tr>
+              <td style="padding: 10px 14px;${isLast ? '' : ' border-bottom: 1px solid #231633;'} color: #f5efe3; font-size: 13.5px;">
+                <span style="font-family: 'Geist Mono', SFMono-Regular, Menlo, monospace; color: #dcb872; font-weight: 600; margin-right: 10px;">${num}</span>
+                <strong>${content}</strong>
+              </td>
+              <td align="right" style="padding: 10px 14px;${isLast ? '' : ' border-bottom: 1px solid #231633;'} font-family: 'Geist Mono', SFMono-Regular, Menlo, monospace; font-size: 10px; color: #94897c; text-transform: uppercase; letter-spacing: 1px;">
+                Track ${num}
+              </td>
+            </tr>`
           })
           .join('')
-        return `<p style="margin: 0 0 8px 0;"><strong>${escapeHtml(header)}</strong></p><ol style="margin: 0 0 16px 0; padding-left: 20px;">${lis}</ol>`
+
+        return `
+          <!-- Challenge Domains (Amethyst Cosmic Card) -->
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #140d1e; border: 1px solid #37254b; border-radius: 3px; margin: 24px 0;">
+            <tr>
+              <td style="padding: 20px;">
+                <div style="font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10.5px; font-weight: 600; color: #b48ae0; text-transform: uppercase; letter-spacing: 1.8px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #261738;">
+                  ✦ ${escapeHtml(header.toUpperCase())}
+                </div>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #0e0914; border: 1px solid #231633; border-radius: 3px;">
+                  ${rows}
+                </table>
+              </td>
+            </tr>
+          </table>`
       }
 
       // Unordered / Bullet list (e.g. Event Overview)
       if (lines.length > 1 && lines.slice(1).every((item) => item.startsWith('- ') || item.startsWith('• '))) {
         const header = lines[0]
         const items = lines.slice(1)
-        const lis = items
-          .map((item) => {
+        const rows = items
+          .map((item, idx) => {
             const raw = item.replace(/^[-•]\s*/, '')
-            const content = escapeHtml(raw)
-              .replace(/^([A-Za-z\s]+:)/, '<strong>$1</strong>')
-              .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-            return `<li style="margin-bottom: 4px;">${content}</li>`
+            const colonIdx = raw.indexOf(':')
+            const label = colonIdx !== -1 ? raw.slice(0, colonIdx).trim() : ''
+            const val = colonIdx !== -1 ? raw.slice(colonIdx + 1).trim() : raw
+            return `<tr>
+              <td style="padding: 8px 0; width: 32%; font-family: 'Geist Mono', monospace; font-size: 11.5px; color: #94897c; text-transform: uppercase; vertical-align: top;${idx > 0 ? ' border-top: 1px solid #1c1524;' : ''}">
+                ${escapeHtml(label)}:
+              </td>
+              <td style="padding: 8px 0; color: ${label.toLowerCase().includes('prize') ? '#dcb872' : label.toLowerCase().includes('date') ? '#f8e8c0' : '#f5efe3'}; font-weight: 500; font-size: 13.5px;${idx > 0 ? ' border-top: 1px solid #1c1524;' : ''}">
+                ${escapeHtml(val)}
+              </td>
+            </tr>`
           })
           .join('')
-        return `<p style="margin: 0 0 8px 0;"><strong>${escapeHtml(header)}</strong></p><ul style="margin: 0 0 16px 0; padding-left: 20px;">${lis}</ul>`
+
+        return `
+          <!-- Event Overview Plaque -->
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #120e18; border: 1px solid #332718; border-left: 3px solid #dcb872; border-radius: 3px; margin: 24px 0;">
+            <tr>
+              <td style="padding: 22px 20px;">
+                <div style="font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10.5px; font-weight: 600; color: #dcb872; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #231b26;">
+                  ✦ ${escapeHtml(header.toUpperCase())}
+                </div>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                  ${rows}
+                </table>
+              </td>
+            </tr>
+          </table>`
       }
 
-      // Plain link line
+      // Plain link line / Call to action
       if (/https?:\/\//i.test(trimmed)) {
-        const parts = lines.map((line) => {
-          return escapeHtml(line).replace(
-            /(https?:\/\/[^\s<]+)/g,
-            '<a href="$1" style="color: #1a56db; text-decoration: underline; word-break: break-all;">$1</a>'
-          )
-        })
-        return `<p style="margin: 0 0 16px 0;">${parts.join('<br>')}</p>`
+        return `
+          <!-- Call to Action (Official Portal) -->
+          <div style="text-align: center; margin: 28px 0;">
+            <p style="margin: 0 0 16px 0; font-size: 14.5px; line-height: 1.6; color: #c2b9ab;">
+              ${escapeHtml(trimmed.replace(/https?:\/\/[^\s<]+/g, '')).trim() || 'Student teams can find the full details and register directly on our official portal:'}
+            </p>
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin: 0 auto 12px;">
+              <tr>
+                <td align="center" style="background-color: #dcb872; background: linear-gradient(135deg, #f8e8c0 0%, #dcb872 60%, #b8924b 100%); border-radius: 3px; box-shadow: 0 4px 18px rgba(220, 184, 114, 0.35);">
+                  <a href="https://hackathon.cybersec-kgrcet.com/" target="_blank" style="display: inline-block; padding: 13px 32px; font-family: 'Geist Mono', monospace; font-size: 12.5px; font-weight: 600; color: #0f0c08; text-decoration: none; text-transform: uppercase; letter-spacing: 1.5px;">
+                    OFFICIAL HACKATHON PORTAL ↗
+                  </a>
+                </td>
+              </tr>
+            </table>
+            <div style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #94897c;">
+              <a href="https://hackathon.cybersec-kgrcet.com/" target="_blank" style="color: #dcb872; text-decoration: underline;">https://hackathon.cybersec-kgrcet.com/</a>
+            </div>
+          </div>`
       }
 
       // Formal sign-off
       if (/^(?:warm\s+)?regards,?/i.test(trimmed)) {
-        return `<p style="margin: 0 0 24px 0;">${lines.map((l) => escapeHtml(l)).join('<br>')}</p>`
+        return `
+          <!-- Formal Committee Sign-Off -->
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border-top: 1px solid #231b26; padding-top: 22px; margin-top: 26px;">
+            <tr>
+              <td>
+                <p style="margin: 0 0 6px 0; font-size: 14px; color: #94897c; line-height: 1.6;">Warm regards,</p>
+                <p style="margin: 0 0 4px 0; font-size: 15px; font-weight: 600; color: #f5efe3;">${escapeHtml(effectiveSender)}</p>
+                <p style="margin: 0 0 2px 0; font-size: 13px; color: #dcb872; font-family: 'Geist Mono', monospace;">Cybersecurity &amp; Ethical Hacking Club, KGRCET</p>
+                <p style="margin: 0; font-size: 12px; color: #94897c;">Department of Computer Science and Engineering, KGRCET</p>
+              </td>
+            </tr>
+          </table>`
       }
 
       // Opt-out / STOP line
       if (/reply STOP/i.test(trimmed)) {
-        return `<p style="margin: 24px 0 0 0; font-size: 13px; line-height: 1.5; color: #6b7280;">${escapeHtml(trimmed)}</p>`
+        return `<p style="margin: 22px 0 0 0; font-size: 11.5px; line-height: 1.5; color: #5a524a; text-align: center;">${escapeHtml(trimmed)}</p>`
       }
 
       // Standard letter paragraph
       const formatted = escapeHtml(trimmed)
-        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong style="color: #ffffff;">$1</strong>')
         .replace(/\n/g, '<br>')
-      return `<p style="margin: 0 0 16px 0;">${formatted}</p>`
+      return `<p style="margin: 0 0 16px 0; font-size: 14.5px; line-height: 1.65; color: #c2b9ab;">${formatted}</p>`
     })
     .filter(Boolean)
     .join('\n')
 
   return `
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="color-scheme" content="dark">
+  <meta name="supported-color-schemes" content="dark">
   <title>${escapeHtml(subject)}</title>
+  
+  <!-- Web fonts with web-safe fallbacks -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Geist+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+    @media only screen and (max-width: 620px) {
+      .email-container { width: 100% !important; max-width: 100% !important; }
+      .mobile-p-20 { padding: 24px 18px !important; }
+      .mobile-title { font-size: 28px !important; line-height: 1.15 !important; }
+      .mobile-stack { display: block !important; width: 100% !important; }
+    }
+  </style>
 </head>
-<body style="margin: 0; padding: 24px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.6; color: #222222; background-color: #ffffff;">
-  <div style="max-width: 600px; margin: 0 auto;">
-${paragraphsHtml}
-  </div>
+<body style="margin: 0; padding: 0; background-color: #07060a; font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f5efe3; -webkit-font-smoothing: antialiased;">
+
+  <!-- Outer Canvas (Deep Obsidian / Void) -->
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color: #07060a; padding: 40px 12px;">
+    <tr>
+      <td align="center">
+        
+        <!-- Main Card Container -->
+        <table role="presentation" class="email-container" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width: 600px; background-color: #0e0b13; border: 1px solid #332718; border-radius: 4px; overflow: hidden; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85);">
+          
+          <!-- Top Celestial Gold Foil Accent Bar -->
+          <tr>
+            <td style="height: 3px; background: #dcb872; background: linear-gradient(90deg, #94702f 0%, #dcb872 30%, #fff4d6 50%, #dcb872 70%, #94702f 100%); font-size: 1px; line-height: 1px;">&nbsp;</td>
+          </tr>
+
+          <!-- Banner / Grand Header -->
+          <tr>
+            <td class="mobile-p-20" style="background-color: #120e18; background: linear-gradient(180deg, #171120 0%, #0e0b13 100%); padding: 36px 32px 30px; text-align: center; border-bottom: 1px solid #2a2016;">
+
+              <!-- College Logo Plate -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin: 0 auto 18px;">
+                <tr>
+                  <td align="center" style="background: #ffffff; padding: 8px 16px; border-radius: 4px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);">
+                    <img src="${escapeHtml(event.logoUrl || 'https://hackathon.cybersec-kgrcet.com/assets/kgrcet-logo.png')}" alt="KG Reddy College of Engineering &amp; Technology" width="180" style="display: block; width: 180px; max-width: 100%; height: auto; border: 0;" />
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Organizer Moniker (Geist Mono) -->
+              <div style="font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10.5px; font-weight: 500; color: #dcb872; letter-spacing: 2.2px; text-transform: uppercase; margin-bottom: 12px;">
+                ✦ DEPARTMENT OF COMPUTER SCIENCE &amp; ENGINEERING · KGRCET ✦
+              </div>
+
+              <!-- Grand Hackathon Title (Cormorant Serif Display) -->
+              <h1 class="mobile-title" style="margin: 0; font-family: 'Cormorant', Garamond, 'Times New Roman', Georgia, serif; font-size: 34px; font-weight: 300; line-height: 1.1; letter-spacing: -0.01em; color: #ffffff;">
+                KGRCET's HACKATHON <span style="font-style: italic; color: #dcb872; font-weight: 400;">2027</span>
+              </h1>
+
+              <!-- Tagline (Mono Spaced) -->
+              <p style="margin: 10px 0 0 0; font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 400; color: #c2b9ab; letter-spacing: 2.4px; text-transform: uppercase;">
+                ${escapeHtml(event.tagline || '36-HOUR NATIONAL LEVEL HACKATHON')}
+              </p>
+
+            </td>
+          </tr>
+
+          <!-- Content Body -->
+          <tr>
+            <td class="mobile-p-20" style="padding: 36px 32px;">
+              
+              <!-- Official Invitation Pill -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin-bottom: 24px;">
+                <tr>
+                  <td style="background-color: #17130b; border: 1px solid #dcb872; padding: 6px 14px; border-radius: 2px;">
+                    <span style="font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 600; color: #f8e8c0; letter-spacing: 1.5px; text-transform: uppercase;">
+                      ✦ OFFICIAL INVITATION
+                    </span>
+                  </td>
+                </tr>
+              </table>
+
+              ${contentHtml}
+
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #07060a; border-top: 1px solid #2a2016; padding: 24px 28px; text-align: center;">
+              
+              <div style="font-family: 'Geist Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; color: #dcb872; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px;">
+                KG REDDY COLLEGE OF ENGINEERING AND TECHNOLOGY
+              </div>
+
+              <p style="margin: 0 0 8px 0; font-size: 11.5px; line-height: 1.5; color: #94897c;">
+                Beside Moinabad Police Station, Chilkur Village, Moinabad, Hyderabad, Telangana — 501504
+              </p>
+
+              <p style="margin: 0; font-family: 'Geist Mono', monospace; font-size: 11px; color: #73695f;">
+                Inquiries &amp; Official Communications: <a href="mailto:${escapeHtml(event.contactEmail)}" style="color: #dcb872; text-decoration: none;">${escapeHtml(event.contactEmail)}</a>
+              </p>
+
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
 </body>
 </html>
   `.trim()
@@ -752,11 +929,13 @@ export function renderInvitationEmail({
   // Plain text part
   const text = filteredParagraphs.join('\n\n')
 
-  // HTML letter part
-  const html = renderInvitationHtmlLetter({
+  // HTML theme part
+  const html = renderInvitationHtmlTheme({
     subject,
     paragraphs: filteredParagraphs,
+    formattedRecipient,
     effectiveSender,
+    event,
   })
 
   return {

@@ -1008,15 +1008,12 @@ test('admin invitations API: templates, preview, test-send, dispatch, duplicate 
   assert.match(prevRes.body.html, /Cybersecurity (&|&amp;) Ethical Hacking Club/)
   assert.match(prevRes.body.html, /sharing this opportunity with your students|pass it on to students/i)
   assert.match(prevRes.body.html, /reply STOP/)
-  assert.doesNotMatch(prevRes.body.html, /OFFICIAL EVENT INVITATION/i)
-  assert.doesNotMatch(prevRes.body.html, /<table/i)
+  assert.match(prevRes.body.html, /✦ OFFICIAL INVITATION/i)
   assert.match(prevRes.body.html, /prize pool/i)
   assert.match(prevRes.body.html, /hackathon\.cybersec-kgrcet\.com/)
+  assert.match(prevRes.body.html, /<img\s/i)
   assert.match(prevRes.body.text, /Respected Dr\. Ramesh Kumar,/)
   assert.match(prevRes.body.text, /reply STOP and we won't write again/)
-  // Assert no logo image and no marketing button in invitation HTML
-  assert.doesNotMatch(prevRes.body.html, /<img\s/i)
-  assert.doesNotMatch(prevRes.body.html, /REGISTER STUDENT TEAMS ↗/)
 
   // 2b. Verify internal preview does not have external outreach CTA text
   const prevInternal = await f.call('POST', '/api/admin/invitations/preview', {

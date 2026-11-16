@@ -170,39 +170,38 @@ test('renderInvitationEmail generates personal letter bypassing promotions tab',
   assert.match(email.html, /700\+ student developers and innovators/)
   assert.match(email.html, /sharing this opportunity with your students/)
 
-  // Challenge Domains & Event Overview structured semantic lists
-  assert.match(email.html, /<strong>Event Overview:<\/strong>/)
-  assert.match(email.html, /<strong>Dates:<\/strong> February 19–20, 2027 \(36 Hours\)/)
-  assert.match(email.html, /<strong>Venue:<\/strong> KGRCET Campus, Moinabad, Hyderabad/)
-  assert.match(email.html, /<strong>Team Size:<\/strong> 2–4 Students/)
-  assert.match(email.html, /<strong>Prize Pool:<\/strong> ₹1,00,000 \(Provisional\)/)
+  // Challenge Domains & Event Overview structured inside the HTML theme
+  assert.match(email.html, /✦ EVENT OVERVIEW/i)
+  assert.match(email.html, /February 19–20, 2027 \(36 Hours\)/)
+  assert.match(email.html, /KGRCET Campus, Moinabad, Hyderabad/)
+  assert.match(email.html, /2–4 Students/)
+  assert.match(email.html, /₹1,00,000 \(Provisional\)/)
 
-  assert.match(email.html, /<strong>Challenge Domains:<\/strong>/)
-  assert.match(email.html, /<ol style="margin: 0 0 16px 0; padding-left: 20px;">/)
-  assert.match(email.html, /<li style="margin-bottom: 4px;">Generative AI &amp; LLM Applications<\/li>/)
-  assert.match(email.html, /<li style="margin-bottom: 4px;">Cybersecurity &amp; Digital Forensics<\/li>/)
-  assert.match(email.html, /<li style="margin-bottom: 4px;">FinTech &amp; Blockchain<\/li>/)
-  assert.match(email.html, /<li style="margin-bottom: 4px;">HealthTech &amp; Mental Well-being<\/li>/)
-  assert.match(email.html, /<li style="margin-bottom: 4px;">Open Innovation<\/li>/)
+  assert.match(email.html, /✦ CHALLENGE DOMAINS/i)
+  assert.match(email.html, /Generative AI &amp; LLM Applications/)
+  assert.match(email.html, /Cybersecurity &amp; Digital Forensics/)
+  assert.match(email.html, /FinTech &amp; Blockchain/)
+  assert.match(email.html, /HealthTech &amp; Mental Well-being/)
+  assert.match(email.html, /Open Innovation/)
 
-  // Official portal link (single URL, plain and semantic)
+  // Official portal link
   assert.match(email.html, /https:\/\/hackathon\.cybersec-kgrcet\.com\//)
-  assert.doesNotMatch(email.html, /https:\/\/hackathon\.cybersec-kgrcet\.com\/register/)
 
   // Sign-off: Warm regards
-  assert.match(email.html, /Warm regards,<br>Sai Vaibhav<br>Cybersecurity &amp; Ethical Hacking Club, KGRCET/)
+  assert.match(email.html, /Warm regards,/)
+  assert.match(email.html, /Sai Vaibhav/)
+  assert.match(email.html, /Cybersecurity &amp; Ethical Hacking Club, KGRCET/)
   assert.match(email.text, /Warm regards,\nSai Vaibhav\nCybersecurity & Ethical Hacking Club, KGRCET/)
 
   // Anti-spam opt-out
   assert.match(email.html, /reply STOP and we won&#39;t write again/)
   assert.match(email.text, /reply STOP and we won't write again/)
 
-  // Deliverability protections: no tables, no promotional headers, no logo image
-  assert.doesNotMatch(email.html, /<table/i)
-  assert.doesNotMatch(email.html, /<img/i)
-  assert.doesNotMatch(email.html, /✦/i)
-  assert.doesNotMatch(email.html, /OFFICIAL EVENT INVITATION/i)
-  assert.doesNotMatch(email.html, /REGISTER STUDENT TEAMS/i)
+  // Rich HTML theme features: Logo, Cormorant title, obsidian theme card
+  assert.match(email.html, /<img\s/i)
+  assert.match(email.html, /kgrcet-logo\.png/i)
+  assert.match(email.html, /✦ OFFICIAL INVITATION/i)
+  assert.match(email.html, /OFFICIAL HACKATHON PORTAL ↗/i)
 })
 
 test('outbox queue enqueues all members and processes deliveries sequentially', async (t) => {
