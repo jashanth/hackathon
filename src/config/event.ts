@@ -64,7 +64,7 @@ export const tracks: Track[] = [
   {
     id: 'generative-ai-automation',
     number: '01',
-    title: 'Generative AI & Automation',
+    title: 'Generative AI & LLM Applications',
     description: 'Participants build practical software tools that go beyond basic chat interfaces to automate complex, multi-step workflows.',
     focusAreas: 'Multi-agent systems, enterprise productivity, automated code review, and localized language assistants.',
     status: 'Click for Details',

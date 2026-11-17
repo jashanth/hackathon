@@ -1099,55 +1099,56 @@ function App() {
                   </p>
                 </div>
 
-                {/* Problem Statements Section (text 'Software Projects' removed) */}
-                <div className="track-ps-section">
-                  {(() => {
-                    const trackStatements = problemStatements.filter((ps) => ps.trackId === selectedTrack.id)
-                    if (problemStatementsReleased && trackStatements.length > 0) {
-                      return (
-                        <div className="ps-table-wrapper">
-                          <table className="ps-table">
-                            <thead>
-                              <tr>
-                                <th className="ps-th-id">ID</th>
-                                <th className="ps-th-title">Problem Title</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {trackStatements.map((ps) => (
-                                <tr key={ps.id}>
-                                  <td className="ps-td-id">{ps.statementCode}</td>
-                                  <td className="ps-td-title">
-                                    <a
-                                      href={ps.pdfUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="ps-link"
-                                      title={`Open ${ps.title} PDF in a new tab`}
-                                    >
-                                      <span>{ps.title}</span>
-                                      <ExternalLink size={14} className="ps-external-icon" />
-                                    </a>
-                                  </td>
+                {/* Problem Statements Section */}
+                {problemStatementsReleased && (
+                  <div className="track-ps-section">
+                    {(() => {
+                      const trackStatements = problemStatements.filter((ps) => ps.trackId === selectedTrack.id)
+                      if (trackStatements.length > 0) {
+                        return (
+                          <div className="ps-table-wrapper">
+                            <table className="ps-table">
+                              <thead>
+                                <tr>
+                                  <th className="ps-th-id">ID</th>
+                                  <th className="ps-th-title">Problem Title</th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                              </thead>
+                              <tbody>
+                                {trackStatements.map((ps) => (
+                                  <tr key={ps.id}>
+                                    <td className="ps-td-id">{ps.statementCode}</td>
+                                    <td className="ps-td-title">
+                                      <a
+                                        href={ps.pdfUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="ps-link"
+                                        title={`Open ${ps.title} PDF in a new tab`}
+                                      >
+                                        <span>{ps.title}</span>
+                                        <ExternalLink size={14} className="ps-external-icon" />
+                                      </a>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )
+                      }
+
+                      return (
+                        <div className="ps-empty-card">
+                          <Clock size={20} />
+                          <div className="ps-empty-text">
+                            <span>No problem statements published for this track yet.</span>
+                          </div>
                         </div>
                       )
-                    }
-
-                    return (
-                      <div className="ps-empty-card">
-                        <Clock size={20} />
-                        <div className="ps-empty-text">
-                          <strong>Problem statements will be revealed at the hackathon</strong>
-                          <span>Statements for {selectedTrack.title} will appear in this pop-up once unlocked by the organizers.</span>
-                        </div>
-                      </div>
-                    )
-                  })()}
-                </div>
+                    })()}
+                  </div>
+                )}
               </div>
 
               <div className="track-modal-footer">

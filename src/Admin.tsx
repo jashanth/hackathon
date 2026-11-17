@@ -1106,19 +1106,6 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
     }
   }
 
-  const handleUpdateStatus = async (inv: Invitation, status: InvitationStatus) => {
-    setInviteUpdating(inv.id)
-    try {
-      await api(`invitations/${inv.id}/status`, 'PATCH', { status })
-      setToast(`Status for ${inv.recipientName} updated to ${status.toUpperCase()}.`)
-      await fetchInvitations()
-    } catch (err: unknown) {
-      setError(errorText(err, 'Failed to update delivery status.'))
-    } finally {
-      setInviteUpdating(null)
-    }
-  }
-
   const handleDeleteInvite = async (inv: Invitation) => {
     if (!window.confirm(`Delete invitation record for ${inv.recipientName} (${inv.email})?`)) return
     setInviteUpdating(inv.id)
@@ -1752,11 +1739,6 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
               <span className="stat-val">{invitationStats.total}</span>
               <span style={{ fontSize: '12px', color: 'var(--ink-soft)' }}>All recipients</span>
             </div>
-            <div className="invite-stat-card is-delivered">
-              <span className="admin-stat-label">Delivered</span>
-              <span className="stat-val">{invitationStats.delivered}</span>
-              <span style={{ fontSize: '12px', color: '#34d399' }}>Confirmed receipt</span>
-            </div>
             <div className="invite-stat-card is-sent">
               <span className="admin-stat-label">Sent</span>
               <span className="stat-val">{invitationStats.sent}</span>
@@ -1848,7 +1830,7 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
                     <th>Subject</th>
                     <th>Status</th>
                     <th>Dispatched By</th>
-                    <th style={{ textAlign: 'right' }}>Actions</th>
+                    <th style={{ textAlign: 'right', whiteSpace: 'nowrap', minWidth: '170px' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1894,49 +1876,70 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
                         <small style={{ display: 'block', color: 'var(--ink)' }}>{inv.sentBy}</small>
                         <small style={{ color: 'var(--ink-soft)' }}>{formatDate(inv.sentAt || inv.createdAt)}</small>
                       </td>
-                      <td data-label="Actions" className="admin-actions">
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                      <td data-label="Actions" className="admin-actions" style={{ whiteSpace: 'nowrap' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', whiteSpace: 'nowrap' }}>
                           <a
                             href={`/api/admin/invitations/${inv.id}/preview`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="btn-secondary-luxury"
-                            style={{ minHeight: '30px', padding: '3px 8px', fontSize: '11.5px', textDecoration: 'none' }}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              minHeight: '30px',
+                              padding: '4px 10px',
+                              fontSize: '11.5px',
+                              textDecoration: 'none',
+                              whiteSpace: 'nowrap',
+                              flexShrink: 0,
+                            }}
                             title="Preview Invitation Email in a new tab"
                           >
-                            <ExternalLink size={12} /> Preview
+                            <ExternalLink size={12} style={{ flexShrink: 0 }} />
+                            <span>Preview</span>
                           </a>
                           <button
                             type="button"
                             className="btn-secondary-luxury"
-                            style={{ minHeight: '30px', padding: '3px 8px', fontSize: '11.5px' }}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              minHeight: '30px',
+                              padding: '4px 10px',
+                              fontSize: '11.5px',
+                              whiteSpace: 'nowrap',
+                              flexShrink: 0,
+                              width: 'auto',
+                            }}
                             disabled={inviteUpdating === inv.id}
                             onClick={() => handleResendInvite(inv)}
                             title="Resend Invitation Email"
                           >
-                            <RefreshCw size={12} className={inviteUpdating === inv.id ? 'spin' : ''} /> Resend
+                            <RefreshCw size={12} className={inviteUpdating === inv.id ? 'spin' : ''} style={{ flexShrink: 0 }} />
+                            <span>Resend</span>
                           </button>
-                          <select
-                            className="form-input"
-                            style={{ minHeight: '30px', padding: '2px 6px', fontSize: '11px', width: 'auto' }}
-                            value={inv.status}
-                            onChange={(e) => handleUpdateStatus(inv, e.target.value as InvitationStatus)}
-                            title="Update delivery status"
-                          >
-                            <option value="delivered">Delivered</option>
-                            <option value="sent">Sent</option>
-                            <option value="pending">Pending</option>
-                            <option value="failed">Failed</option>
-                          </select>
                           <button
                             type="button"
                             className="btn-secondary-luxury"
-                            style={{ minHeight: '30px', padding: '3px 6px', fontSize: '11.5px', color: 'var(--danger)' }}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              minHeight: '30px',
+                              padding: '4px 8px',
+                              fontSize: '11.5px',
+                              color: 'var(--danger)',
+                              whiteSpace: 'nowrap',
+                              flexShrink: 0,
+                              width: 'auto',
+                            }}
                             disabled={inviteUpdating === inv.id}
                             onClick={() => handleDeleteInvite(inv)}
                             title="Delete Invitation Record"
                           >
-                            <Trash2 size={12} />
+                            <Trash2 size={12} style={{ flexShrink: 0 }} />
                           </button>
                         </div>
                       </td>
