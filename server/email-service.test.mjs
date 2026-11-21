@@ -184,8 +184,8 @@ test('renderInvitationEmail generates personal letter bypassing promotions tab',
   assert.match(email.html, /✦ EVENT OVERVIEW/i)
   assert.match(email.html, /February 19–20, 2027 \(36 Hours\)/)
   assert.match(email.html, /KGRCET Campus, Moinabad, Hyderabad/)
-  assert.match(email.html, /2–4 Students/)
-  assert.match(email.html, /₹1,00,000 \(Provisional\)/)
+  assert.match(email.html, /2–5 Students/)
+  assert.match(email.html, /₹2,00,000 \(Provisional\)/)
 
   assert.match(email.html, /✦ CHALLENGE DOMAINS/i)
   assert.match(email.html, /Generative AI &amp; LLM Applications/)

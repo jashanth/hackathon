@@ -44,7 +44,7 @@ const steps = ['Team details', 'Members', 'Payment and Review']
 const rupees = (amount: number) => `₹${amount.toLocaleString('en-IN')}`
 
 const domainOptions = tracks.map((t) => t.title)
-const teamSizeOptions = ['2', '3', '4'] as const
+const teamSizeOptions = ['2', '3', '4', '5'] as const
 const genderOptions = ['Male', 'Female', 'Other'] as const
 const yearOptions = ['1st Year', '2nd Year', '3rd Year', '4th Year'] as const
 const foodOptions = ['VEG', 'NON VEG'] as const
@@ -92,7 +92,7 @@ function blankMember(): Member {
 
 function syncMembersForSize(data: Data): Member[] {
   const size = Number(data.teamSize)
-  if (![2, 3, 4].includes(size)) return data.members || []
+  if (![2, 3, 4, 5].includes(size)) return data.members || []
   const needed = size - 1
   const current = data.members || []
   const result: Member[] = []
@@ -139,7 +139,7 @@ function validate(data: Data, rules: Rules, members: boolean) {
   }
 
   const size = Number(data.teamSize)
-  if (!['2', '3', '4'].includes(data.teamSize)) {
+  if (!['2', '3', '4', '5'].includes(data.teamSize)) {
     errors.teamSize = 'Please select a team size of 2, 3, or 4.'
   } else if (rules.minTeamSize !== null && size < rules.minTeamSize) {
     errors.teamSize = `The minimum team size is ${rules.minTeamSize}, including the leader.`

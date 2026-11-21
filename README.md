@@ -41,7 +41,7 @@ npm run test:server
   ```json
   {
     "draft": { "data": {}, "step": 0, "status": "draft", "receipt": null, "revision": 0 },
-    "rules": { "minTeamSize": 2, "maxTeamSize": 4, "submissionEnabled": false }
+    "rules": { "minTeamSize": 2, "maxTeamSize": 5, "submissionEnabled": false }
   }
   ```
 - `PUT /api/registration`: Accepts `{ data, step, revision }` and returns the updated draft. Uses optimistic concurrency; stale revisions return `409 Conflict`.
@@ -231,7 +231,7 @@ All admin login attempts are recorded in SQLite table `admin_audit_log` (`timest
 | `TRUST_PROXY` | Whether Node sits behind a trusted reverse proxy | `true` or `false` |
 | `SUBMISSION_ENABLED` | Whether public registrations are accepted | `true` or `false` |
 | `REGISTRATION_MIN_TEAM_SIZE` | Minimum team size for submission | `2` |
-| `REGISTRATION_MAX_TEAM_SIZE` | Maximum team size for submission | `4` |
+| `REGISTRATION_MAX_TEAM_SIZE` | Maximum team size for submission | `5` |
 | `SMTP_HOST` | Brevo SMTP server host | `smtp-relay.brevo.com` |
 | `SMTP_PORT` | SMTP port | `587` |
 | `SMTP_USER` | SMTP username | Confidential login |
@@ -275,7 +275,7 @@ ADMIN_ACCOUNTS_JSON='[{"email":"saivaibhavaluguri@gmail.com","name":"Aluguri Sai
 
 SUBMISSION_ENABLED=true
 REGISTRATION_MIN_TEAM_SIZE=2
-REGISTRATION_MAX_TEAM_SIZE=4
+REGISTRATION_MAX_TEAM_SIZE=5
 
 SMTP_HOST=smtp-relay.brevo.com
 SMTP_PORT=587

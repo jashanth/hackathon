@@ -688,14 +688,14 @@ function App() {
               <Reveal className="about-text-col">
                 <h3>Made for people who love to build great things.</h3>
                 <p>
-                  At <strong>KG Reddy College of Engineering &amp; Technology</strong>, we believe the best
-                  software and hardware systems are forged when razor-sharp talent meets a focused 36-hour sprint,
-                  high-speed connectivity, and hands-on domain mentorship.
+                  At <strong>KG Reddy College of Engineering &amp; Technology</strong>,  we bring students together for 36 hours of coding, teamwork, and problem-solving. It's a chance to learn, share ideas, and build projects that solve real-world problems.
                 </p>
                 <p>
-                  In collaboration with the <strong>Cybersecurity &amp; Ethical Hacking Club (CSEH)</strong>,
-                  KGRCET’s Hackathon 2027 opens its doors to student builders from across India. Bring
-                  your vision, form your squad, and turn abstract code into working production-grade systems.
+                  An initiative by the Department of Computer Science and Engineering,<br>
+                  </br>
+
+                  Organized by the <strong>Cybersecurity &amp; Ethical Hacking Club</strong>,
+                  in collaboration with   <strong>Blockchain Club</strong> and <strong>CSI Student Chapter</strong>.
                 </p>
 
                 <div className="about-highlights-list">
@@ -756,7 +756,7 @@ function App() {
                 </div>
                 <div className="crucible-badge b3">
                   <Globe size={13} />
-                  NATIONAL ARENA
+                  NATIONAL LEVEL
                 </div>
                 <div className="crucible-badge b4">
                   <Terminal size={13} />
@@ -844,7 +844,7 @@ function App() {
               pill="AWARDS & RECOGNITION"
               title={<>Prestigious <span>Prize Pool</span></>}
             >
-              A provisional prize pool of <strong>INR 1,00,000</strong>. Award categories and distribution are yet to be announced.
+              A provisional prize pool of <strong>INR 2,00,000</strong>. Award categories and distribution are yet to be announced.
             </SectionHeader>
 
             <div className="prizes-grid">

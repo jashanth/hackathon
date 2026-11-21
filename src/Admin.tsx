@@ -114,8 +114,8 @@ We are bringing together 700+ student developers and innovators from across the 
 Event Overview:
 • Dates: February 19–20, 2027 (36 Hours)
 • Venue: KGRCET Campus, Moinabad, Hyderabad
-• Team Size: 2–4 Students
-• Prize Pool: ₹1,00,000 (Provisional)
+• Team Size: 2–5 Students
+• Prize Pool: ₹2,00,000 (Provisional)
 
 Challenge Domains:
 1. Generative AI & LLM Applications
@@ -139,8 +139,8 @@ const DEFAULT_EXTERNAL_INVITATION_BODY = `KG Reddy College of Engineering & Tech
 Event Overview:
 • Dates: February 19–20, 2027 (36 Hours)
 • Venue: KGRCET Campus, Moinabad, Hyderabad
-• Team Size: 2–4 Students
-• Prize Pool: ₹1,00,000 (Provisional)
+• Team Size: 2–5 Students
+• Prize Pool: ₹2,00,000 (Provisional)
 
 Challenge Domains:
 1. Generative AI & LLM Applications
@@ -168,8 +168,8 @@ We are bringing together 700+ student developers and innovators from across the 
 Event Overview:
 • Dates: February 19–20, 2027 (36 Hours)
 • Venue: KGRCET Campus, Moinabad, Hyderabad
-• Team Size: 2–4 Students
-• Prize Pool: ₹1,00,000 (Provisional)
+• Team Size: 2–5 Students
+• Prize Pool: ₹2,00,000 (Provisional)
 
 Challenge Domains:
 1. Generative AI & LLM Applications
@@ -738,7 +738,7 @@ function Dashboard({ session, onSignOut, onUnauthorized }: { session: Session; o
   const fee = rules?.feePerPerson ?? 649
   // Same team sizes as the website form, unless the server sets its own limits.
   const minPeople = rules?.minTeamSize ?? 2
-  const maxPeople = rules?.maxTeamSize ?? 4
+  const maxPeople = rules?.maxTeamSize ?? 5
   const registrationOpen = Boolean(rules?.submissionEnabled)
 
   const fetchRegistrations = useCallback((silent = false) => {
